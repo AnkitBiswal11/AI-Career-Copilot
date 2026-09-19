@@ -1,4 +1,4 @@
-# 🚀 Career Copilot
+# 🚀 AI Career Copilot
 
 ### AI-Powered Career Intelligence Platform for Students & Job Seekers
 
