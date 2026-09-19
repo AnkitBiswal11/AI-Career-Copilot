@@ -183,7 +183,7 @@ Compare any target job description directly against your resume profile to compu
 
 🏗️ System Architecture
 
-┌───────────────────────┐
+                     ┌───────────────────────┐
                      │     User / Client     │
                      └───────────┬───────────┘
                                  │
