@@ -219,6 +219,36 @@ Career Copilot
 └── 🤖 Conversational Coach (Context-Aware Prompt Routing)
 
 
+🛠️ Tech Stack
+
+Frontend
+• React — Frontend application library
+• TypeScript — Type-safe client-side development
+• Vite — Frontend tooling and development server
+• Tailwind CSS — UI styling
+• TanStack Router — Client-side routing
+• Lucide React — UI icons
+• Recharts — Data visualization
+
+Backend
+• Python — Backend programming language (3.14+)
+• FastAPI — REST API framework
+• SQLAlchemy — Database ORM
+• Pydantic — Data validation
+• JWT — Authentication
+• pwdlib — Secure password hashing
+• Uvicorn — High-performance ASGI server
+
+Database
+• MySQL — Relational database
+• SQLAlchemy — ORM and database interaction
+• PyMySQL — MySQL connectivity driver
+
+AI & Local Inference
+• Ollama — Local AI runtime
+• Qwen3 4B — Local language model
+• Structured JSON — AI-to-API integration
+
 📁 Project Structure
 career-copilot/
 ├── backend/
