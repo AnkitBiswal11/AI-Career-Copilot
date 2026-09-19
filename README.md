@@ -123,3 +123,242 @@ AI Career Coach
    │
    ▼
 Career Progress
+
+
+
+✨ Key Features
+1. 📄 Resume Intelligence
+Upload your resume in PDF/text format. The system extracts competencies, scores completeness, and isolates strengths and weaknesses.
+
+2. 💼 AI Job Match
+Compare any target job description directly against your resume profile to compute a deterministic relevance and compatibility score.
+
+┌──────────────────┐          ┌──────────────────┐
+│      RESUME      │          │ JOB REQUIREMENTS │
+└────────┬─────────┘          └────────┬─────────┘
+         │                             │
+         └──────────────┬──────────────┘
+                        │
+                        ▼
+             ┌─────────────────────┐
+             │ AI MATCH & INSIGHTS │
+             └─────────────────────┘
+
+3. 🧠 AI Skill Gap AnalyzerBenchmarks your verified skills against industry expectations for your target role.SkillCurrent LevelRequired LevelGapPriorityPython75%90%15%MediumSQL65%85%20%HighDocker20%75%55%HighFastAPI70%80%10%Low
+
+4. 🗺️ Personalized Career RoadmapGenerates step-by-step milestones organized by priority skills, practical assignments, and completion tracking.
+
+5. 🎤 AI Interview PreparationProvides dynamic technical and behavioral interview sessions tailored to your detected skill gaps, with line-by-line feedback and scoring.
+
+6. 🤖 AI Career CoachAn interactive conversational assistant with full context over your resume, target role, and active learning roadmap.
+
+7. 📊 Unified Dashboard & Learning HubA central interface displaying your readiness metric, skill distributions, active roadmap tasks, and prioritized learning resources.🔄 How It Works
+
+┌───────────────────┐
+│   Upload Resume   │
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│ Resume AI Parsing │
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│  Target Role / JD │
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│ Skill Gap Engine  │
+└─────────┬─────────┘
+          ▼
+┌───────────────────┐
+│ Dynamic Roadmap   │
+└─────────┬─────────┘
+          │
+     ┌────┴──────────────┐
+     ▼                   ▼
+┌──────────────┐   ┌──────────────┐
+│ Learning Hub │   │  Mock Coach  │
+└──────────────┘   └──────────────┘
+
+
+🏗️ System Architecture
+
+┌───────────────────────┐
+                     │     User / Client     │
+                     └───────────┬───────────┘
+                                 │
+                                 ▼
+                     ┌───────────────────────┐
+                     │ React + TS (Vite)     │
+                     │ Tailwind CSS, Lucide  │
+                     └───────────┬───────────┘
+                                 │
+                            REST / JSON (JWT)
+                                 │
+                                 ▼
+                     ┌───────────────────────┐
+                     │    FastAPI Backend    │
+                     └───────────┬───────────┘
+                                 │
+         ┌───────────────────────┼───────────────────────┐
+         │                       │                       │
+         ▼                       ▼                       ▼
+┌──────────────────┐   ┌──────────────────┐   ┌──────────────────┐
+│  MySQL Database  │   │  Ollama Runtime  │   │  JWT Auth Engine │
+│ (SQLAlchemy ORM) │   │   (Qwen3 4B)     │   │ (pwdlib hashing) │
+└──────────────────┘   └──────────────────┘   └──────────────────┘
+
+🧩 Application Modules
+Career Copilot
+├── 🔐 Authentication (Registration, Login, JWT verification)
+├── 📄 Resume Intelligence (PDF Extraction, Skill Vectoring)
+├── 💼 Job Matching (JD Parsing, Semantic Match Scoring)
+├── 🧠 Skill Intelligence (Gap Benchmarking, Priority Levels)
+├── 🗺️ Career Roadmaps (Stage & Item Tracking)
+├── 🎤 Interview Engine (Dynamic Prompts, Answer Rubrics)
+└── 🤖 Conversational Coach (Context-Aware Prompt Routing)
+
+
+📁 Project Structure
+career-copilot/
+├── backend/
+│   └── app/
+│       ├── __init__.py
+│       ├── main.py              # Application entrypoint & CORS
+│       ├── auth.py              # JWT authentication logic
+│       ├── database.py          # SQLAlchemy engine & session
+│       ├── models.py            # Relational database models
+│       ├── schemas.py           # Pydantic validation schemas
+│       ├── ai_service.py        # Ollama interface & structured output
+│       ├── coach_service.py     # Contextual coach logic
+│       ├── interview_service.py # Interview generation & evaluation
+│       ├── skill_gap_service.py # Benchmarking heuristics
+│       └── routes/              # Modular API endpoints
+├── frontend/
+│   ├── src/
+│   │   ├── components/          # Reusable UI components
+│   │   ├── routes/              # TanStack router page layouts
+│   │   ├── services/            # Axios / fetch client configurations
+│   │   └── types/               # TypeScript interfaces
+│   ├── package.json
+│   ├── tsconfig.json
+│   └── vite.config.ts
+├── .env.example
+├── .gitignore
+└── README.md
+
+⚙️ Getting Started
+Prerequisites
+Python 3.14+
+
+Node.js 20+ & npm
+
+MySQL Server
+
+Ollama installed and running
+
+1. Clone & Setup Environment
+git clone https://github.com/YOUR_USERNAME/career-copilot.git
+cd career-copilot
+
+Backend Setup:
+# Windows
+python -m venv venv
+.\venv\Scripts\Activate.ps1
+
+# Linux / macOS
+python3 -m venv venv
+source venv/bin/activate
+
+# Install dependencies
+pip install -r requirements.txt
+
+Local LLM Setup:
+ollama pull qwen3:4b
+ollama run qwen3:4b
+
+2. Database Configuration
+Log in to MySQL and initialize the schema
+CREATE DATABASE career_copilot;
+
+Configure .env in the root folder:
+DATABASE_URL=mysql+pymysql://USERNAME:PASSWORD@localhost:3306/career_copilot
+SECRET_KEY=your_super_secret_jwt_key
+OLLAMA_BASE_URL=http://localhost:11434
+
+
+3. Run the Services
+Start Backend:
+python -m uvicorn backend.app.main:app --reload --port 8000
+
+API Endpoint: [http://127.0.0.1:8000](http://127.0.0.1:8000)
+
+Interactive Swagger Documentation: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+Start Frontend:
+cd frontend
+npm install
+npm run dev
+
+Client App: http://localhost:8080 (or http://localhost:5173)
+
+📡 API Documentation
+FastAPI auto-generates comprehensive interactive docs. With the server running, visit:
+
+Swagger UI: [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs)
+
+ReDoc: [http://127.0.0.1:8000/redoc](http://127.0.0.1:8000/redoc)
+
+🗄️ Database Architecture
+User
+ ├── Resumes (Parsed metadata, raw content, scores)
+ ├── Job Descriptions (Requirements, title, tags)
+ ├── Roadmaps
+ │    └── Roadmap Stages
+ │         └── Roadmap Items (Tasks, resources, completion states)
+ └── Interview Sessions
+      └── Interview Questions (Prompts, user submissions, AI critique)
+
+📦 Git & Version Control
+To prevent sensitive credentials and virtual environment binaries from entering version control, ensure your .gitignore contains:
+# Python
+__pycache__/
+*.py[cod]
+venv/
+.venv/
+
+# Environment secrets
+.env
+.env.*
+!.env.example
+
+# Frontend
+node_modules/
+dist/
+build/
+
+# OS & Logs
+*.log
+.DS_Store
+Thumbs.db
+
+🤝 Contributing
+Fork the project repository.
+
+Create your branch: git checkout -b feature/NewFeature
+
+Commit your changes: git commit -m "Add NewFeature"
+
+Push to origin: git push origin feature/NewFeature
+
+Open a Pull Request.
+
+📜 License
+Distributed under the MIT License. See LICENSE for more information.
+
+👨‍💻 Developer
+Ankit
+
+Computer Science & Engineering
+
+Focus: Backend
