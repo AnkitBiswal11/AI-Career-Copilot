@@ -1,3 +1,4 @@
+
 import json
 import ollama
 
@@ -31,13 +32,56 @@ def _clean_json_response(content: str) -> dict:
 def generate_career_roadmap(
     resume_text: str,
     job_description: str,
+    settings: dict | None = None,
 ) -> dict:
+    settings = settings or {}
+
+    aggressive_mode = bool(settings.get("aggressiveMode", False))
+    include_genai = bool(settings.get("includeGenAI", True))
+    prioritize_dsa = bool(settings.get("prioritizeDSA", True))
+
+    if aggressive_mode:
+        pace_instruction = """
+- Use an intensive learning plan with a faster pace.
+- Prefer focused daily tasks and shorter stage durations.
+- Keep the workload realistic and achievable for a student.
+"""
+    else:
+        pace_instruction = """
+- Use a balanced, sustainable learning plan.
+- Allow enough time to understand and practice each topic.
+- Avoid overloading the candidate with too many tasks.
+"""
+
+    if include_genai:
+        genai_instruction = """
+- Include relevant Generative AI and AI tools when useful for the target role.
+- Do not add unrelated GenAI topics just to fill the roadmap.
+"""
+    else:
+        genai_instruction = """
+- Do not include Generative AI or AI-tool learning tasks.
+- Focus on the core skills required for the target role instead.
+"""
+
+    if prioritize_dsa:
+        dsa_instruction = """
+- Give Data Structures and Algorithms high priority.
+- Include DSA practice in an early stage when relevant to the target role.
+- Include problem-solving practice appropriate for placement preparation.
+"""
+    else:
+        dsa_instruction = """
+- Include DSA only when relevant to the target role.
+- Do not make DSA the main focus of the roadmap.
+- Give appropriate attention to role-specific skills and projects.
+"""
 
     prompt = f"""
 You are an expert career coach for computer science students and fresh graduates.
 
-Create a personalized career roadmap for the candidate based on their resume
-and target job description.
+Create a personalized career roadmap for the candidate based on their resume,
+target job description, and learning preferences.
 
 IMPORTANT RULES:
 
@@ -48,15 +92,31 @@ IMPORTANT RULES:
 - Prioritize missing skills from the target job.
 - Make the roadmap realistic for a fresher.
 - The roadmap should focus on practical placement preparation.
-- Include DSA, technical skills, projects, interview preparation, and job readiness
+- Include technical skills, projects, interview preparation, and job readiness
   when relevant to the target role.
 - Order stages logically.
 - Keep each stage actionable.
 - Each stage should contain 3-6 concrete learning/action items.
 - Estimate realistic duration in days.
 - Completion should initially be 0 for all stages.
+- Follow the candidate's learning preferences below.
 - Return ONLY valid JSON.
 - Do not use markdown.
+
+LEARNING PREFERENCES:
+
+Aggressive mode: {"Enabled" if aggressive_mode else "Disabled"}
+Include GenAI: {"Enabled" if include_genai else "Disabled"}
+Prioritize DSA: {"Enabled" if prioritize_dsa else "Disabled"}
+
+LEARNING PACE:
+{pace_instruction}
+
+GENAI PREFERENCE:
+{genai_instruction}
+
+DSA PREFERENCE:
+{dsa_instruction}
 
 Return EXACTLY this structure:
 
@@ -137,9 +197,7 @@ TARGET JOB:
             response["message"]["content"]
         )
 
-        # --------------------------------
         # Readiness score
-        # --------------------------------
         try:
             readiness_score = int(
                 result.get("readiness_score", 0)
@@ -147,36 +205,24 @@ TARGET JOB:
         except (TypeError, ValueError):
             readiness_score = 0
 
-        readiness_score = max(
-            0,
-            min(readiness_score, 100),
-        )
+        readiness_score = max(0, min(readiness_score, 100))
 
-        # --------------------------------
         # Target role
-        # --------------------------------
         target_role = str(
             result.get("target_role", "")
         ).strip()
 
-        # --------------------------------
         # Summary
-        # --------------------------------
         summary = str(
             result.get("summary", "")
         ).strip()
 
-        # --------------------------------
         # Clean stages
-        # --------------------------------
         stages = []
-
         raw_stages = result.get("stages", [])
 
         if isinstance(raw_stages, list):
-
             for index, stage in enumerate(raw_stages):
-
                 if not isinstance(stage, dict):
                     continue
 
@@ -187,10 +233,8 @@ TARGET JOB:
                 if not title:
                     continue
 
-                # Stage ID
-                stage_id = index + 1
+                stage_id = len(stages) + 1
 
-                # Duration
                 try:
                     duration_days = int(
                         stage.get("duration_days", 7)
@@ -203,73 +247,43 @@ TARGET JOB:
                     min(duration_days, 120),
                 )
 
-                # Completion starts at zero
-                completion = 0
+                status = "current" if not stages else "upcoming"
 
-                # Status
-                if index == 0:
-                    status = "current"
-                else:
-                    status = "upcoming"
-
-                # --------------------------------
-                # Clean stage items
-                # --------------------------------
                 items = []
-
-                raw_items = stage.get(
-                    "items",
-                    [],
-                )
+                raw_items = stage.get("items", [])
 
                 if isinstance(raw_items, list):
-
                     for item in raw_items:
-
                         if isinstance(item, dict):
-
                             label = str(
                                 item.get("label", "")
                             ).strip()
-
                         else:
-
-                            label = str(
-                                item
-                            ).strip()
+                            label = str(item).strip()
 
                         if not label:
                             continue
 
-                        items.append(
-                            {
-                                "label": label,
-                                "done": False,
-                            }
-                        )
+                        items.append({
+                            "label": label,
+                            "done": False,
+                        })
 
-                # Limit items
                 items = items[:6]
 
                 if not items:
                     continue
 
-                stages.append(
-                    {
-                        "id": stage_id,
-                        "title": title,
-                        "status": status,
-                        "duration_days": duration_days,
-                        "completion": completion,
-                        "items": items,
-                    }
-                )
+                stages.append({
+                    "id": stage_id,
+                    "title": title,
+                    "status": status,
+                    "duration_days": duration_days,
+                    "completion": 0,
+                    "items": items,
+                })
 
-        # --------------------------------
-        # Generic list cleaner
-        # --------------------------------
         def clean_list(value):
-
             if not isinstance(value, list):
                 return []
 
@@ -293,7 +307,6 @@ TARGET JOB:
         }
 
     except json.JSONDecodeError:
-
         return {
             "target_role": "",
             "readiness_score": 0,
@@ -305,7 +318,6 @@ TARGET JOB:
         }
 
     except Exception as exc:
-
         return {
             "target_role": "",
             "readiness_score": 0,

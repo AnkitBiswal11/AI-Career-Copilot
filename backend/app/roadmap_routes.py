@@ -1,4 +1,6 @@
+
 import json
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -7,6 +9,7 @@ from .database import SessionLocal
 from .dependencies import get_current_user
 from .models import (
     User,
+    UserSettings,
     Resume,
     JobDescription,
     Roadmap,
@@ -29,11 +32,69 @@ router = APIRouter(
 
 def get_db():
     db = SessionLocal()
-
     try:
         yield db
     finally:
         db.close()
+
+
+# ============================================================
+# DEFAULT USER SETTINGS
+# ============================================================
+
+DEFAULT_SETTINGS = {
+    "weeklyDigest": True,
+    "skillGapAlerts": True,
+    "streakReminders": True,
+    "aggressiveMode": False,
+    "includeGenAI": True,
+    "prioritizeDSA": True,
+}
+
+
+def get_user_settings(db: Session, user_id: int):
+    """
+    Get the user's saved settings.
+    Create a default settings row if one does not exist.
+    """
+
+    settings = (
+        db.query(UserSettings)
+        .filter(UserSettings.user_id == user_id)
+        .first()
+    )
+
+    if settings:
+        return settings
+
+    settings = UserSettings(
+        user_id=user_id,
+        weekly_digest=int(DEFAULT_SETTINGS["weeklyDigest"]),
+        skill_gap_alerts=int(DEFAULT_SETTINGS["skillGapAlerts"]),
+        streak_reminders=int(DEFAULT_SETTINGS["streakReminders"]),
+        aggressive_mode=int(DEFAULT_SETTINGS["aggressiveMode"]),
+        include_genai=int(DEFAULT_SETTINGS["includeGenAI"]),
+        prioritize_dsa=int(DEFAULT_SETTINGS["prioritizeDSA"]),
+    )
+
+    db.add(settings)
+    db.commit()
+    db.refresh(settings)
+
+    return settings
+
+
+def build_roadmap_settings(settings: UserSettings) -> dict:
+    """
+    Convert database settings into the format expected
+    by generate_career_roadmap().
+    """
+
+    return {
+        "aggressiveMode": bool(settings.aggressive_mode),
+        "includeGenAI": bool(settings.include_genai),
+        "prioritizeDSA": bool(settings.prioritize_dsa),
+    }
 
 
 # ============================================================
@@ -46,80 +107,50 @@ def build_roadmap_response(
     job: JobDescription,
     db: Session,
 ):
-    """
-    Build a clean roadmap response from the saved
-    Roadmap, RoadmapStage and RoadmapItem records.
-    """
-
     stages = (
         db.query(RoadmapStage)
-        .filter(
-            RoadmapStage.roadmap_id == roadmap.id
-        )
-        .order_by(
-            RoadmapStage.stage_order
-        )
+        .filter(RoadmapStage.roadmap_id == roadmap.id)
+        .order_by(RoadmapStage.stage_order)
         .all()
     )
 
     stage_data = []
 
     for stage in stages:
-
         items = (
             db.query(RoadmapItem)
-            .filter(
-                RoadmapItem.stage_id == stage.id
-            )
-            .order_by(
-                RoadmapItem.item_order
-            )
+            .filter(RoadmapItem.stage_id == stage.id)
+            .order_by(RoadmapItem.item_order)
             .all()
         )
 
-        stage_data.append(
-            {
-                "id": stage.id,
-                "title": stage.title,
-                "status": stage.status,
-                "duration_days": stage.duration_days,
-                "completion": stage.completion,
-                "items": [
-                    {
-                        "id": item.id,
-                        "label": item.label,
-                        "done": bool(item.done),
-                    }
-                    for item in items
-                ],
-            }
-        )
-
-    # --------------------------------------------------------
-    # Parse insights
-    # --------------------------------------------------------
+        stage_data.append({
+            "id": stage.id,
+            "title": stage.title,
+            "status": stage.status,
+            "duration_days": stage.duration_days,
+            "completion": stage.completion,
+            "items": [
+                {
+                    "id": item.id,
+                    "label": item.label,
+                    "done": bool(item.done),
+                }
+                for item in items
+            ],
+        })
 
     try:
-        insights = json.loads(
-            roadmap.insights or "[]"
-        )
-    except json.JSONDecodeError:
+        insights = json.loads(roadmap.insights or "[]")
+    except (json.JSONDecodeError, TypeError):
         insights = []
-
-    # --------------------------------------------------------
-    # Parse recommendations
-    # --------------------------------------------------------
 
     try:
         recommendations = json.loads(
             roadmap.recommendations or "[]"
         )
-    except json.JSONDecodeError:
+    except (json.JSONDecodeError, TypeError):
         recommendations = []
-
-    # --------------------------------------------------------
-    # Calculate overall completion
-    # --------------------------------------------------------
 
     all_items = (
         db.query(RoadmapItem)
@@ -127,48 +158,33 @@ def build_roadmap_response(
             RoadmapStage,
             RoadmapItem.stage_id == RoadmapStage.id,
         )
-        .filter(
-            RoadmapStage.roadmap_id == roadmap.id
-        )
+        .filter(RoadmapStage.roadmap_id == roadmap.id)
         .all()
     )
 
     total_items = len(all_items)
-
     completed_items = sum(
-        1
-        for item in all_items
-        if item.done
+        1 for item in all_items if item.done
     )
 
     overall_completion = (
-        round(
-            completed_items / total_items * 100
-        )
+        round(completed_items / total_items * 100)
         if total_items > 0
         else 0
     )
-
-    # --------------------------------------------------------
-    # Return response
-    # --------------------------------------------------------
 
     return {
         "resume_id": resume.id,
         "job_id": job.id,
         "job_title": job.title,
         "company": job.company,
-
         "roadmap": {
             "id": roadmap.id,
             "target_role": roadmap.target_role,
             "readiness_score": roadmap.readiness_score,
             "summary": roadmap.summary,
-
             "overall_completion": overall_completion,
-
             "stages": stage_data,
-
             "insights": insights,
             "recommendations": recommendations,
         },
@@ -184,19 +200,10 @@ def generate_roadmap(
     resume_id: int,
     job_id: int,
     force: bool = False,
-
-    current_user: User = Depends(
-        get_current_user
-    ),
-
-    db: Session = Depends(
-        get_db
-    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-
-    # ========================================================
     # 1. VALIDATE RESUME
-    # ========================================================
 
     resume = (
         db.query(Resume)
@@ -213,9 +220,7 @@ def generate_roadmap(
             detail="Resume not found",
         )
 
-    # ========================================================
     # 2. VALIDATE JOB
-    # ========================================================
 
     job = (
         db.query(JobDescription)
@@ -244,9 +249,7 @@ def generate_roadmap(
             detail="Job description is empty",
         )
 
-    # ========================================================
     # 3. CHECK FOR EXISTING ROADMAP
-    # ========================================================
 
     existing = (
         db.query(Roadmap)
@@ -258,15 +261,9 @@ def generate_roadmap(
         .first()
     )
 
-    # ========================================================
-    # 4. RETURN SAVED ROADMAP
-    #
-    # Normal page loading should NOT regenerate AI roadmap.
-    # This preserves task progress.
-    # ========================================================
+    # 4. RETURN SAVED ROADMAP UNLESS FORCE IS TRUE
 
     if existing and not force:
-
         return build_roadmap_response(
             existing,
             resume,
@@ -274,199 +271,198 @@ def generate_roadmap(
             db,
         )
 
-    # ========================================================
-    # 5. DELETE OLD ROADMAP WHEN FORCE=true
-    # ========================================================
+    # 5. LOAD USER SETTINGS
+
+    settings = get_user_settings(
+        db,
+        current_user.id,
+    )
+
+    roadmap_settings = build_roadmap_settings(settings)
+
+    # 6. DELETE OLD ROADMAP WHEN FORCE IS TRUE
 
     if existing and force:
-
         old_stages = (
             db.query(RoadmapStage)
             .filter(
-                RoadmapStage.roadmap_id
-                == existing.id
+                RoadmapStage.roadmap_id == existing.id
             )
             .all()
         )
 
-        # Delete all roadmap items first
         for stage in old_stages:
-
             db.query(RoadmapItem).filter(
-                RoadmapItem.stage_id
-                == stage.id
-            ).delete(
-                synchronize_session=False
-            )
+                RoadmapItem.stage_id == stage.id
+            ).delete(synchronize_session=False)
 
-        # Delete stages
         db.query(RoadmapStage).filter(
-            RoadmapStage.roadmap_id
-            == existing.id
-        ).delete(
-            synchronize_session=False
-        )
+            RoadmapStage.roadmap_id == existing.id
+        ).delete(synchronize_session=False)
 
-        # Delete roadmap
         db.delete(existing)
-
         db.commit()
 
-    # ========================================================
-    # 6. GENERATE AI ROADMAP
-    # ========================================================
+    # 7. GENERATE AI ROADMAP USING USER PREFERENCES
 
     print("DEBUG: About to generate roadmap")
 
-    roadmap_data = generate_career_roadmap(
-        resume.extracted_text,
-        job.description,
-    )
+    try:
+        roadmap_data = generate_career_roadmap(
+            resume.extracted_text,
+            job.description,
+            settings=roadmap_settings,
+        )
+
+    except Exception as exc:
+        db.rollback()
+        print("ERROR: Roadmap generation failed:", str(exc))
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to generate roadmap. Please try again.",
+        )
+
+    if not isinstance(roadmap_data, dict):
+        db.rollback()
+        raise HTTPException(
+            status_code=500,
+            detail="AI returned an invalid roadmap.",
+        )
+
+    if roadmap_data.get("error"):
+        db.rollback()
+        print(
+            "ERROR: AI roadmap generation failed:",
+            roadmap_data["error"],
+        )
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to generate roadmap. Please try again.",
+        )
 
     print("DEBUG: AI roadmap generated")
-    print(
-        "DEBUG: roadmap_data =",
-        roadmap_data,
-    )
 
-    # ========================================================
-    # 7. CREATE ROADMAP
-    # ========================================================
+    # 8. CREATE ROADMAP
 
-    roadmap = Roadmap(
-        user_id=current_user.id,
-        resume_id=resume.id,
-        job_id=job.id,
-
-        target_role=roadmap_data.get(
-            "target_role",
-            job.title or "Target Role",
-        ),
-
-        readiness_score=int(
-            roadmap_data.get(
-                "readiness_score",
+    try:
+        roadmap = Roadmap(
+            user_id=current_user.id,
+            resume_id=resume.id,
+            job_id=job.id,
+            target_role=(
+                roadmap_data.get("target_role")
+                or job.title
+                or "Target Role"
+            ),
+            readiness_score=max(
                 0,
-            )
-        ),
-
-        summary=roadmap_data.get(
-            "summary",
-            "",
-        ),
-
-        insights=json.dumps(
-            roadmap_data.get(
-                "insights",
-                [],
-            )
-        ),
-
-        recommendations=json.dumps(
-            roadmap_data.get(
-                "recommendations",
-                [],
-            )
-        ),
-    )
-
-    db.add(roadmap)
-
-    print(
-        "DEBUG: Saving roadmap to database"
-    )
-
-    db.commit()
-    db.refresh(roadmap)
-
-    print(
-        "DEBUG: Roadmap saved, ID =",
-        roadmap.id,
-    )
-
-    # ========================================================
-    # 8. SAVE STAGES AND ITEMS
-    # ========================================================
-
-    stages = roadmap_data.get(
-        "stages",
-        [],
-    )
-
-    for stage_index, stage_data in enumerate(
-        stages,
-        start=1,
-    ):
-
-        stage = RoadmapStage(
-            roadmap_id=roadmap.id,
-
-            title=stage_data.get(
-                "title",
-                f"Stage {stage_index}",
+                min(
+                    int(roadmap_data.get("readiness_score", 0)),
+                    100,
+                ),
             ),
-
-            status=(
-                "current"
-                if stage_index == 1
-                else "upcoming"
+            summary=roadmap_data.get("summary", ""),
+            insights=json.dumps(
+                roadmap_data.get("insights", [])
             ),
-
-            duration_days=int(
-                stage_data.get(
-                    "duration_days",
-                    7,
-                )
+            recommendations=json.dumps(
+                roadmap_data.get("recommendations", [])
             ),
-
-            completion=0,
-
-            stage_order=stage_index,
         )
 
-        db.add(stage)
+        db.add(roadmap)
         db.flush()
 
-        # ----------------------------------------------------
-        # Save stage items
-        # ----------------------------------------------------
+        # 9. SAVE STAGES AND ITEMS
 
-        items = stage_data.get(
-            "items",
-            []
-        )
+        stages = roadmap_data.get("stages", [])
 
-        for item_index, item_data in enumerate(
-            items,
+        for stage_index, stage_data in enumerate(
+            stages,
             start=1,
         ):
-
-            label = item_data.get(
-                "label",
-                "",
-            ).strip()
-
-            # Ignore empty AI-generated items
-            if not label:
+            if not isinstance(stage_data, dict):
                 continue
 
-            item = RoadmapItem(
-                stage_id=stage.id,
+            title = str(
+                stage_data.get("title", "")
+            ).strip()
 
-                label=label,
+            if not title:
+                continue
 
-                done=0,
+            try:
+                duration_days = int(
+                    stage_data.get("duration_days", 7)
+                )
+            except (TypeError, ValueError):
+                duration_days = 7
 
-                item_order=item_index,
+            duration_days = max(
+                1,
+                min(duration_days, 120),
             )
 
-            db.add(item)
+            stage = RoadmapStage(
+                roadmap_id=roadmap.id,
+                title=title,
+                status=(
+                    "current"
+                    if stage_index == 1
+                    else "upcoming"
+                ),
+                duration_days=duration_days,
+                completion=0,
+                stage_order=stage_index,
+            )
 
-    db.commit()
+            db.add(stage)
+            db.flush()
 
-    # ========================================================
-    # 9. RETURN SAVED ROADMAP
-    # ========================================================
+            items = stage_data.get("items", [])
+
+            if not isinstance(items, list):
+                continue
+
+            for item_index, item_data in enumerate(
+                items,
+                start=1,
+            ):
+                if isinstance(item_data, dict):
+                    label = str(
+                        item_data.get("label", "")
+                    ).strip()
+                else:
+                    label = str(item_data).strip()
+
+                if not label:
+                    continue
+
+                item = RoadmapItem(
+                    stage_id=stage.id,
+                    label=label,
+                    done=0,
+                    item_order=item_index,
+                )
+
+                db.add(item)
+
+        db.commit()
+        db.refresh(roadmap)
+
+        print("DEBUG: Roadmap saved, ID =", roadmap.id)
+
+    except Exception as exc:
+        db.rollback()
+        print("ERROR: Failed to save roadmap:", str(exc))
+
+        raise HTTPException(
+            status_code=500,
+            detail="Unable to save roadmap. Please try again.",
+        )
+
+    # 10. RETURN SAVED ROADMAP
 
     return build_roadmap_response(
         roadmap,
@@ -484,49 +480,24 @@ def generate_roadmap(
 def update_roadmap_item(
     item_id: int,
     item_data: RoadmapItemUpdate,
-
-    current_user: User = Depends(
-        get_current_user
-    ),
-
-    db: Session = Depends(
-        get_db
-    ),
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
-
-    # ========================================================
-    # 1. FIND ITEM
-    #
-    # Ownership is checked through:
-    #
-    # RoadmapItem
-    #      ↓
-    # RoadmapStage
-    #      ↓
-    # Roadmap
-    #      ↓
-    # current_user
-    #
-    # This prevents one user from modifying another user's
-    # roadmap item.
-    # ========================================================
+    # 1. FIND ITEM AND VERIFY OWNERSHIP
 
     item = (
         db.query(RoadmapItem)
         .join(
             RoadmapStage,
-            RoadmapItem.stage_id
-            == RoadmapStage.id,
+            RoadmapItem.stage_id == RoadmapStage.id,
         )
         .join(
             Roadmap,
-            RoadmapStage.roadmap_id
-            == Roadmap.id,
+            RoadmapStage.roadmap_id == Roadmap.id,
         )
         .filter(
             RoadmapItem.id == item_id,
-            Roadmap.user_id
-            == current_user.id,
+            Roadmap.user_id == current_user.id,
         )
         .first()
     )
@@ -537,26 +508,15 @@ def update_roadmap_item(
             detail="Roadmap item not found",
         )
 
-    # ========================================================
     # 2. UPDATE CHECKBOX
-    # ========================================================
 
-    item.done = (
-        1
-        if item_data.done
-        else 0
-    )
+    item.done = 1 if item_data.done else 0
 
-    # ========================================================
     # 3. FIND STAGE
-    # ========================================================
 
     stage = (
         db.query(RoadmapStage)
-        .filter(
-            RoadmapStage.id
-            == item.stage_id
-        )
+        .filter(RoadmapStage.id == item.stage_id)
         .first()
     )
 
@@ -566,53 +526,37 @@ def update_roadmap_item(
             detail="Roadmap stage not found",
         )
 
-    # ========================================================
     # 4. RECALCULATE STAGE COMPLETION
-    # ========================================================
 
     stage_items = (
         db.query(RoadmapItem)
-        .filter(
-            RoadmapItem.stage_id
-            == stage.id
-        )
+        .filter(RoadmapItem.stage_id == stage.id)
         .all()
     )
 
-    total_stage_items = len(
-        stage_items
-    )
-
+    total_stage_items = len(stage_items)
     completed_stage_items = sum(
-        1
-        for current_item in stage_items
+        1 for current_item in stage_items
         if current_item.done
     )
 
-    if total_stage_items > 0:
-
-        stage.completion = round(
+    stage.completion = (
+        round(
             completed_stage_items
             / total_stage_items
             * 100
         )
+        if total_stage_items > 0
+        else 0
+    )
 
-    else:
-
-        stage.completion = 0
-
-    # ========================================================
     # 5. FIND ROADMAP
-    # ========================================================
 
     roadmap = (
         db.query(Roadmap)
         .filter(
-            Roadmap.id
-            == stage.roadmap_id,
-
-            Roadmap.user_id
-            == current_user.id,
+            Roadmap.id == stage.roadmap_id,
+            Roadmap.user_id == current_user.id,
         )
         .first()
     )
@@ -623,128 +567,65 @@ def update_roadmap_item(
             detail="Roadmap not found",
         )
 
-    # ========================================================
-    # 6. GET ALL STAGES
-    # ========================================================
+    # 6. RECALCULATE STAGE STATUS
 
     all_stages = (
         db.query(RoadmapStage)
-        .filter(
-            RoadmapStage.roadmap_id
-            == roadmap.id
-        )
-        .order_by(
-            RoadmapStage.stage_order
-        )
+        .filter(RoadmapStage.roadmap_id == roadmap.id)
+        .order_by(RoadmapStage.stage_order)
         .all()
     )
-
-    # ========================================================
-    # 7. RECALCULATE STAGE STATUS
-    #
-    # Rules:
-    #
-    # 100% → completed
-    # First incomplete stage → current
-    # Later incomplete stages → upcoming
-    # ========================================================
 
     first_incomplete_found = False
 
     for current_stage in all_stages:
-
         if current_stage.completion >= 100:
-
-            current_stage.status = (
-                "completed"
-            )
-
+            current_stage.status = "completed"
         elif not first_incomplete_found:
-
-            current_stage.status = (
-                "current"
-            )
-
+            current_stage.status = "current"
             first_incomplete_found = True
-
         else:
+            current_stage.status = "upcoming"
 
-            current_stage.status = (
-                "upcoming"
-            )
-
-    # ========================================================
-    # 8. CALCULATE OVERALL ROADMAP PROGRESS
-    # ========================================================
+    # 7. CALCULATE OVERALL PROGRESS
 
     all_items = (
         db.query(RoadmapItem)
         .join(
             RoadmapStage,
-            RoadmapItem.stage_id
-            == RoadmapStage.id,
+            RoadmapItem.stage_id == RoadmapStage.id,
         )
-        .filter(
-            RoadmapStage.roadmap_id
-            == roadmap.id
-        )
+        .filter(RoadmapStage.roadmap_id == roadmap.id)
         .all()
     )
 
-    total_items = len(
-        all_items
-    )
-
+    total_items = len(all_items)
     completed_items = sum(
-        1
-        for current_item in all_items
+        1 for current_item in all_items
         if current_item.done
     )
 
-    if total_items > 0:
-
-        overall_completion = round(
-            completed_items
-            / total_items
-            * 100
-        )
-
-    else:
-
-        overall_completion = 0
-
-    # ========================================================
-    # 9. UPDATE ROADMAP TIMESTAMP
-    # ========================================================
-
-    from datetime import datetime, timezone
-
-    roadmap.updated_at = (
-        datetime.now(timezone.utc)
+    overall_completion = (
+        round(completed_items / total_items * 100)
+        if total_items > 0
+        else 0
     )
 
-    # ========================================================
-    # 10. SAVE EVERYTHING
-    # ========================================================
+    # 8. UPDATE TIMESTAMP
+
+    roadmap.updated_at = datetime.now(timezone.utc)
+
+    # 9. SAVE
 
     db.commit()
 
-    # ========================================================
-    # 11. RETURN PROGRESS INFORMATION
-    # ========================================================
+    # 10. RETURN PROGRESS
 
     return {
         "message": "Roadmap item updated successfully",
-
         "item_id": item.id,
-
-        "done": bool(
-            item.done
-        ),
-
+        "done": bool(item.done),
         "stage_id": stage.id,
-
         "stage_completion": stage.completion,
-
         "overall_completion": overall_completion,
     }

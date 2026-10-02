@@ -10,6 +10,7 @@ import type { ReactNode } from "react";
 import { useNavigate } from "@tanstack/react-router";
 
 import { api, onUnauthorized, tokenStore } from "@/services/api";
+import type { UserProfile, UserProfileUpdate } from "@/services/api";
 import type { User } from "@/types/api";
 
 const USER_KEY = "cc_user";
@@ -20,12 +21,33 @@ interface AuthContextValue {
   ready: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (fullName: string, email: string, password: string) => Promise<void>;
+  register: (
+    fullName: string,
+    email: string,
+    password: string
+  ) => Promise<void>;
   logout: () => void;
-  updateUser: (patch: Partial<User>) => void;
+  updateUser: (patch: Partial<User>) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
+
+/**
+ * Convert the backend user profile into the frontend User type.
+ * The backend uses "name"; the frontend uses "full_name".
+ */
+function toFrontendUser(profile: UserProfile): User {
+  return {
+    id: profile.id,
+    full_name: profile.name,
+    email: profile.email,
+    target_role: profile.target_role ?? "",
+    experience_level: profile.experience_level ?? "",
+    preferred_location: profile.preferred_location ?? "",
+    college: profile.college ?? "",
+    graduation_year: profile.graduation_year ?? "",
+  };
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -68,7 +90,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   useEffect(() => {
-    onUnauthorized(() => logout());
+    return onUnauthorized(() => logout());
   }, [logout]);
 
   const login = useCallback(
@@ -78,28 +100,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         password,
       });
 
-      // Backend login returns the JWT token.
-      // Fetch the real user profile using that token.
+      // Set the token before requesting the user's profile.
       tokenStore.set(res.access_token);
 
-      const currentUser = await api.me();
+      const profile = await api.me();
+      const currentUser = toFrontendUser(profile);
 
       persist(res.access_token, currentUser);
     },
-    [persist],
+    [persist]
   );
 
   const register = useCallback(
     async (fullName: string, email: string, password: string) => {
-      // Backend expects "name", not "full_name".
+      // The backend expects "name", not "full_name".
       await api.register({
         name: fullName,
         email,
         password,
       });
 
-      // Registration doesn't return a JWT,
-      // so log in immediately after successful registration.
+      // Register, then log in because registration does not return a token.
       const res = await api.login({
         email,
         password,
@@ -107,27 +128,56 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       tokenStore.set(res.access_token);
 
-      const currentUser = await api.me();
+      const profile = await api.me();
+      const currentUser = toFrontendUser(profile);
 
       persist(res.access_token, currentUser);
     },
-    [persist],
+    [persist]
   );
 
-  const updateUser = useCallback((patch: Partial<User>) => {
-    setUser((prev) => {
-      if (!prev) return prev;
+  const updateUser = useCallback(
+    async (patch: Partial<User>) => {
+      if (!user) {
+        throw new Error("You must be logged in to update your profile.");
+      }
 
-      const next = {
-        ...prev,
-        ...patch,
+      const profile: UserProfileUpdate = {
+        name: patch.full_name ?? user.full_name,
+        target_role:
+          patch.target_role !== undefined
+            ? patch.target_role
+            : user.target_role ?? null,
+        experience_level:
+          patch.experience_level !== undefined
+            ? patch.experience_level
+            : user.experience_level ?? null,
+        preferred_location:
+          patch.preferred_location !== undefined
+            ? patch.preferred_location
+            : user.preferred_location ?? null,
+        college:
+          patch.college !== undefined
+            ? patch.college
+            : user.college ?? null,
+        graduation_year:
+          patch.graduation_year !== undefined
+            ? patch.graduation_year
+            : user.graduation_year ?? null,
       };
 
-      window.localStorage.setItem(USER_KEY, JSON.stringify(next));
+      // Save to the backend first.
+      const updatedProfile = await api.updateProfile(profile);
 
-      return next;
-    });
-  }, []);
+      // Convert the response to the frontend's User shape.
+      const nextUser = toFrontendUser(updatedProfile);
+
+      // Persist only after the backend update succeeds.
+      window.localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
+      setUser(nextUser);
+    },
+    [user]
+  );
 
   const value = useMemo(
     () => ({
@@ -140,7 +190,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       updateUser,
     }),
-    [user, token, ready, login, register, logout, updateUser],
+    [user, token, ready, login, register, logout, updateUser]
   );
 
   return (

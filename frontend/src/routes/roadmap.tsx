@@ -18,6 +18,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { api } from "@/services/api";
 import type { RoadmapItem, RoadmapStage } from "@/services/api";
 import { cn } from "@/lib/utils";
+import { loadSettings, type Settings } from "@/routes/settings";
 
 export const Route = createFileRoute("/roadmap")({
   component: RoadmapPage,
@@ -121,6 +122,8 @@ function recalculateStages(
 }
 
 function RoadmapPage() {
+  const [settings, setSettings] = useState<Settings>(loadSettings);
+
   const [resumeId, setResumeId] = useState<number | null>(
     null,
   );
@@ -162,6 +165,20 @@ function RoadmapPage() {
   >(null);
 
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const syncSettings = () => {
+      setSettings(loadSettings());
+    };
+
+    syncSettings();
+
+    window.addEventListener("storage", syncSettings);
+
+    return () => {
+      window.removeEventListener("storage", syncSettings);
+    };
+  }, []);
 
   const activeStage = useMemo(() => {
     if (activeStageId === null) {
@@ -232,7 +249,6 @@ function RoadmapPage() {
           ),
       );
 
-      // Safe access for TypeScript / noUncheckedIndexedAccess
       const firstStage = normalizedStages[0];
 
       if (firstStage) {
@@ -241,10 +257,7 @@ function RoadmapPage() {
         setActiveStageId(null);
       }
     } catch (err) {
-      console.error(
-        "Failed to load roadmap:",
-        err,
-      );
+      console.error("Failed to load roadmap:", err);
 
       setError(
         err instanceof Error
@@ -362,9 +375,7 @@ function RoadmapPage() {
             ),
           }));
 
-        return recalculateStages(
-          updatedStages,
-        );
+        return recalculateStages(updatedStages);
       });
 
       if (
@@ -392,10 +403,7 @@ function RoadmapPage() {
   }
 
   async function handleRegenerate() {
-    if (
-      resumeId === null ||
-      jobId === null
-    ) {
+    if (resumeId === null || jobId === null) {
       setError(
         "Resume and job information is required to regenerate the roadmap.",
       );
@@ -403,11 +411,10 @@ function RoadmapPage() {
       return;
     }
 
-    await loadRoadmap(
-      resumeId,
-      jobId,
-      true,
-    );
+    const latestSettings = loadSettings();
+    setSettings(latestSettings);
+
+    await loadRoadmap(resumeId, jobId, true);
   }
 
   if (loading) {
@@ -428,8 +435,7 @@ function RoadmapPage() {
               </h2>
 
               <p className="mt-1 text-sm text-muted-foreground">
-                Analyzing your skills and target
-                role...
+                Analyzing your skills and target role...
               </p>
             </div>
           </div>
@@ -449,7 +455,6 @@ function RoadmapPage() {
           <div>
             <div className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Sparkles className="h-4 w-4" />
-
               AI Career Planning
             </div>
 
@@ -466,9 +471,7 @@ function RoadmapPage() {
 
           <button
             type="button"
-            onClick={() =>
-              void handleRegenerate()
-            }
+            onClick={() => void handleRegenerate()}
             disabled={
               regenerating ||
               resumeId === null ||
@@ -483,13 +486,11 @@ function RoadmapPage() {
             {regenerating ? (
               <>
                 <Loader2 className="h-4 w-4 animate-spin" />
-
                 Regenerating...
               </>
             ) : (
               <>
                 <RefreshCw className="h-4 w-4" />
-
                 Regenerate Roadmap
               </>
             )}
@@ -519,23 +520,17 @@ function RoadmapPage() {
             <div>
               <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
                 <Target className="h-4 w-4" />
-
                 Target career
               </div>
 
               <h2 className="mt-2 text-2xl font-bold">
-                {targetRole ||
-                  jobTitle ||
-                  "Career Goal"}
+                {targetRole || jobTitle || "Career Goal"}
               </h2>
 
               {(jobTitle || company) && (
                 <p className="mt-1 text-sm text-muted-foreground">
                   {jobTitle}
-
-                  {company
-                    ? ` · ${company}`
-                    : ""}
+                  {company ? ` · ${company}` : ""}
                 </p>
               )}
             </div>
@@ -591,8 +586,7 @@ function RoadmapPage() {
               </h2>
 
               <p className="mt-1 text-sm text-muted-foreground">
-                Complete the tasks below to become
-                job-ready.
+                Complete the tasks below to become job-ready.
               </p>
             </div>
 
@@ -606,14 +600,56 @@ function RoadmapPage() {
               className="h-full rounded-full transition-all duration-500"
               style={{
                 width: `${Math.min(
-                  Math.max(
-                    overallCompletion,
-                    0,
-                  ),
+                  Math.max(overallCompletion, 0),
                   100,
                 )}%`,
               }}
             />
+          </div>
+        </div>
+
+        {/* Active preferences */}
+        <div className="rounded-2xl border bg-card p-5 shadow-sm">
+          <div className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5" />
+
+            <div>
+              <h2 className="font-semibold">
+                Roadmap Preferences
+              </h2>
+
+              <p className="text-sm text-muted-foreground">
+                Your current learning preferences.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-4 flex flex-wrap gap-2">
+            {settings.aggressiveMode && (
+              <span className="rounded-full border px-3 py-1.5 text-xs font-medium">
+                Aggressive placement mode
+              </span>
+            )}
+
+            {settings.includeGenAI && (
+              <span className="rounded-full border px-3 py-1.5 text-xs font-medium">
+                GenAI track enabled
+              </span>
+            )}
+
+            {settings.prioritizeDSA && (
+              <span className="rounded-full border px-3 py-1.5 text-xs font-medium">
+                DSA prioritized
+              </span>
+            )}
+
+            {!settings.aggressiveMode &&
+              !settings.includeGenAI &&
+              !settings.prioritizeDSA && (
+                <span className="text-xs text-muted-foreground">
+                  Standard roadmap preferences
+                </span>
+              )}
           </div>
         </div>
 
@@ -632,93 +668,72 @@ function RoadmapPage() {
             </div>
 
             <div className="mt-4 space-y-2">
-              {stages.map(
-                (stage, index) => {
-                  const meta =
-                    STATUS_META[
-                      stage.status
-                    ];
+              {stages.map((stage, index) => {
+                const meta = STATUS_META[stage.status];
+                const StatusIcon = meta.icon;
+                const isActive = stage.id === activeStageId;
 
-                  const StatusIcon =
-                    meta.icon;
+                return (
+                  <button
+                    key={stage.id}
+                    type="button"
+                    onClick={() => setActiveStageId(stage.id)}
+                    className={cn(
+                      "group w-full rounded-xl border p-3 text-left transition",
+                      isActive
+                        ? "border-foreground/20 bg-muted"
+                        : "border-transparent hover:border-border hover:bg-muted/50",
+                    )}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={cn(
+                          "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-bold",
+                          stage.status === "completed" &&
+                            "bg-foreground text-background",
+                        )}
+                      >
+                        {stage.status === "completed" ? (
+                          <Check className="h-4 w-4" />
+                        ) : (
+                          index + 1
+                        )}
+                      </div>
 
-                  const isActive =
-                    stage.id ===
-                    activeStageId;
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-semibold">
+                            {stage.title}
+                          </span>
 
-                  return (
-                    <button
-                      key={stage.id}
-                      type="button"
-                      onClick={() =>
-                        setActiveStageId(
-                          stage.id,
-                        )
-                      }
-                      className={cn(
-                        "group w-full rounded-xl border p-3 text-left transition",
-                        isActive
-                          ? "border-foreground/20 bg-muted"
-                          : "border-transparent hover:border-border hover:bg-muted/50",
-                      )}
-                    >
-                      <div className="flex items-start gap-3">
-                        <div
-                          className={cn(
-                            "flex h-9 w-9 shrink-0 items-center justify-center rounded-full border text-sm font-bold",
-                            stage.status ===
-                              "completed" &&
-                              "bg-foreground text-background",
-                          )}
-                        >
-                          {stage.status ===
-                          "completed" ? (
-                            <Check className="h-4 w-4" />
-                          ) : (
-                            index + 1
-                          )}
+                          <span className="shrink-0 text-xs font-medium">
+                            {stage.completion}%
+                          </span>
                         </div>
 
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="truncate text-sm font-semibold">
-                              {stage.title}
-                            </span>
+                        <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
+                          <StatusIcon className="h-3 w-3" />
+                          {meta.label}
+                        </div>
 
-                            <span className="shrink-0 text-xs font-medium">
-                              {
-                                stage.completion
-                              }
-                              %
-                            </span>
-                          </div>
-
-                          <div className="mt-1 flex items-center gap-1 text-xs text-muted-foreground">
-                            <StatusIcon className="h-3 w-3" />
-
-                            {meta.label}
-                          </div>
-
-                          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
-                            <div
-                              className="h-full rounded-full transition-all"
-                              style={{
-                                width: `${stage.completion}%`,
-                              }}
-                            />
-                          </div>
+                        <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+                          <div
+                            className="h-full rounded-full transition-all"
+                            style={{
+                              width: `${stage.completion}%`,
+                            }}
+                          />
                         </div>
                       </div>
-                    </button>
-                  );
-                },
-              )}
+                    </div>
+                  </button>
+                );
+              })}
 
               {!stages.length && (
                 <div className="rounded-xl border border-dashed p-6 text-center">
                   <p className="text-sm text-muted-foreground">
-                    No roadmap stages are available
-                    yet.
+                    No roadmap stages are available yet.
                   </p>
                 </div>
               )}
@@ -729,26 +744,15 @@ function RoadmapPage() {
           <div className="space-y-6">
             {activeStage ? (
               <>
-                {/* Stage information */}
                 <div className="rounded-2xl border bg-card p-6 shadow-sm">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div>
                       <div className="mb-2 flex items-center gap-2 text-sm font-medium text-muted-foreground">
                         <span>
-                          Stage{" "}
-                          {
-                            activeStage.stage_number
-                          }
+                          Stage {activeStage.stage_number}
                         </span>
-
                         <span>•</span>
-
-                        <span>
-                          {
-                            activeStage.duration_days
-                          }{" "}
-                          days
-                        </span>
+                        <span>{activeStage.duration_days} days</span>
                       </div>
 
                       <h2 className="text-2xl font-bold">
@@ -757,19 +761,14 @@ function RoadmapPage() {
 
                       {activeStage.description && (
                         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                          {
-                            activeStage.description
-                          }
+                          {activeStage.description}
                         </p>
                       )}
                     </div>
 
                     <div className="shrink-0 rounded-xl border px-4 py-3 text-center">
                       <div className="text-2xl font-bold">
-                        {
-                          activeStage.completion
-                        }
-                        %
+                        {activeStage.completion}%
                       </div>
 
                       <div className="text-xs text-muted-foreground">
@@ -787,81 +786,66 @@ function RoadmapPage() {
                     </h2>
 
                     <p className="mt-1 text-sm text-muted-foreground">
-                      Complete each task to progress
-                      through this stage.
+                      Complete each task to progress through this stage.
                     </p>
                   </div>
 
                   <div className="mt-4 space-y-3">
-                    {activeStage.items.map(
-                      (
-                        item: RoadmapItem,
-                      ) => {
-                        const isUpdating =
-                          updatingItemId ===
-                          item.id;
+                    {activeStage.items.map((item: RoadmapItem) => {
+                      const isUpdating = updatingItemId === item.id;
 
-                        return (
-                          <button
-                            key={item.id}
-                            type="button"
-                            disabled={
-                              isUpdating
-                            }
-                            onClick={() =>
-                              void handleToggleItem(
-                                item.id,
-                                !item.done,
-                              )
-                            }
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          disabled={isUpdating}
+                          onClick={() =>
+                            void handleToggleItem(item.id, !item.done)
+                          }
+                          className={cn(
+                            "flex w-full items-center gap-3 rounded-xl border p-4 text-left transition",
+                            item.done
+                              ? "bg-muted/50"
+                              : "hover:bg-muted/50",
+                            isUpdating && "opacity-60",
+                          )}
+                        >
+                          <div
                             className={cn(
-                              "flex w-full items-center gap-3 rounded-xl border p-4 text-left transition",
+                              "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition",
                               item.done
-                                ? "bg-muted/50"
-                                : "hover:bg-muted/50",
-                              isUpdating &&
-                                "opacity-60",
+                                ? "bg-foreground text-background"
+                                : "bg-background",
                             )}
                           >
-                            <div
-                              className={cn(
-                                "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition",
-                                item.done
-                                  ? "bg-foreground text-background"
-                                  : "bg-background",
-                              )}
-                            >
-                              {isUpdating ? (
-                                <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              ) : item.done ? (
-                                <Check className="h-3.5 w-3.5" />
-                              ) : null}
-                            </div>
+                            {isUpdating ? (
+                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            ) : item.done ? (
+                              <Check className="h-3.5 w-3.5" />
+                            ) : null}
+                          </div>
 
-                            <span
-                              className={cn(
-                                "flex-1 text-sm font-medium",
-                                item.done &&
-                                  "text-muted-foreground line-through",
-                              )}
-                            >
-                              {item.label}
-                            </span>
-
-                            {!item.done && (
-                              <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                          <span
+                            className={cn(
+                              "flex-1 text-sm font-medium",
+                              item.done &&
+                                "text-muted-foreground line-through",
                             )}
-                          </button>
-                        );
-                      },
-                    )}
+                          >
+                            {item.label}
+                          </span>
 
-                    {!activeStage.items
-                      .length && (
+                          {!item.done && (
+                            <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                          )}
+                        </button>
+                      );
+                    })}
+
+                    {!activeStage.items.length && (
                       <div className="rounded-xl border border-dashed p-6 text-center">
                         <p className="text-sm text-muted-foreground">
-                          No tasks have been added
-                          to this stage.
+                          No tasks have been added to this stage.
                         </p>
                       </div>
                     )}
@@ -879,8 +863,7 @@ function RoadmapPage() {
                     </h3>
 
                     <p className="mt-2 text-sm text-muted-foreground">
-                      Select a stage to view your
-                      personalized tasks.
+                      Select a stage to view your personalized tasks.
                     </p>
                   </div>
                 </div>
@@ -904,38 +887,34 @@ function RoadmapPage() {
                     </h2>
 
                     <p className="text-sm text-muted-foreground">
-                      What the AI found from your
-                      profile.
+                      What the AI found from your profile.
                     </p>
                   </div>
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  {insights.map(
-                    (insight, index) => (
-                      <div
-                        key={`${index}-${insight}`}
-                        className="rounded-xl border p-4"
-                      >
-                        <div className="flex gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                            <Lightbulb className="h-4 w-4" />
-                          </div>
+                  {insights.map((insight, index) => (
+                    <div
+                      key={`${index}-${insight}`}
+                      className="rounded-xl border p-4"
+                    >
+                      <div className="flex gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <Lightbulb className="h-4 w-4" />
+                        </div>
 
-                          <div>
-                            <h3 className="text-sm font-semibold">
-                              Insight{" "}
-                              {index + 1}
-                            </h3>
+                        <div>
+                          <h3 className="text-sm font-semibold">
+                            Insight {index + 1}
+                          </h3>
 
-                            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                              {insight}
-                            </p>
-                          </div>
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                            {insight}
+                          </p>
                         </div>
                       </div>
-                    ),
-                  )}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -951,43 +930,34 @@ function RoadmapPage() {
                     </h2>
 
                     <p className="text-sm text-muted-foreground">
-                      Focus on these actions to
-                      improve your placement readiness.
+                      Focus on these actions to improve your placement readiness.
                     </p>
                   </div>
                 </div>
 
                 <div className="mt-4 space-y-3">
-                  {recommendations.map(
-                    (
-                      recommendation,
-                      index,
-                    ) => (
-                      <div
-                        key={`${index}-${recommendation}`}
-                        className="rounded-xl border p-4"
-                      >
-                        <div className="flex gap-3">
-                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
-                            <TrendingUp className="h-4 w-4" />
-                          </div>
+                  {recommendations.map((recommendation, index) => (
+                    <div
+                      key={`${index}-${recommendation}`}
+                      className="rounded-xl border p-4"
+                    >
+                      <div className="flex gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted">
+                          <TrendingUp className="h-4 w-4" />
+                        </div>
 
-                          <div>
-                            <h3 className="text-sm font-semibold">
-                              Recommendation{" "}
-                              {index + 1}
-                            </h3>
+                        <div>
+                          <h3 className="text-sm font-semibold">
+                            Recommendation {index + 1}
+                          </h3>
 
-                            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                              {
-                                recommendation
-                              }
-                            </p>
-                          </div>
+                          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                            {recommendation}
+                          </p>
                         </div>
                       </div>
-                    ),
-                  )}
+                    </div>
+                  ))}
                 </div>
               </div>
             )}
@@ -1007,31 +977,24 @@ function RoadmapPage() {
               </div>
 
               <p className="mt-1 text-sm text-muted-foreground">
-                Finish your roadmap tasks consistently
-                and keep improving your job readiness
-                score.
+                Finish your roadmap tasks consistently and keep improving your job readiness score.
               </p>
             </div>
 
             <button
               type="button"
               onClick={() => {
-                const firstIncompleteStage =
-                  stages.find(
-                    (stage) =>
-                      stage.completion < 100,
-                  );
+                const firstIncompleteStage = stages.find(
+                  (stage) => stage.completion < 100,
+                );
 
                 if (firstIncompleteStage) {
-                  setActiveStageId(
-                    firstIncompleteStage.id,
-                  );
+                  setActiveStageId(firstIncompleteStage.id);
                 }
               }}
               className="inline-flex items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition hover:bg-muted"
             >
               Continue Roadmap
-
               <ArrowRight className="h-4 w-4" />
             </button>
           </div>
@@ -1040,3 +1003,4 @@ function RoadmapPage() {
     </AppShell>
   );
 }
+

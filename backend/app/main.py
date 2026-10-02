@@ -12,6 +12,7 @@ from .interview_routes import router as interview_router
 from .skill_gap_routes import router as skill_gap_router
 from .roadmap_routes import router as roadmap_router
 from .coach_routes import router as coach_router
+from .settings_routes import router as settings_router
 
 
 # =========================================================
@@ -37,11 +38,14 @@ app = FastAPI(
 # =========================================================
 
 # Allow the Lovable / Vite frontend to communicate with FastAPI.
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:8080",
         "http://127.0.0.1:8080",
+        "http://localhost:8081",
+        "http://127.0.0.1:8081",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -77,6 +81,7 @@ app.include_router(roadmap_router)
 # AI Career Coach
 app.include_router(coach_router)
 
+app.include_router(settings_router)
 
 # =========================================================
 # ROOT ENDPOINT

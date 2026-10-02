@@ -1,4 +1,9 @@
+
 import type { AuthResponse, JobMatch } from "@/types/api";
+
+/* =========================================================
+   API CONFIGURATION
+   ========================================================= */
 
 const API_BASE_URL = "http://127.0.0.1:8000";
 
@@ -38,7 +43,6 @@ export function onUnauthorized(handler: UnauthorizedHandler) {
   };
 }
 
-
 /* =========================================================
    REQUEST TYPES
    ========================================================= */
@@ -46,7 +50,6 @@ export function onUnauthorized(handler: UnauthorizedHandler) {
 type RequestOptions = RequestInit & {
   token?: string;
 };
-
 
 /* =========================================================
    API ERROR
@@ -62,15 +65,12 @@ export class ApiError extends Error {
     data: unknown = null,
   ) {
     super(message);
-
     this.name = "ApiError";
     this.status = status;
     this.data = data;
-
     Object.setPrototypeOf(this, ApiError.prototype);
   }
 }
-
 
 /* =========================================================
    REQUEST HELPER
@@ -84,18 +84,12 @@ async function request<T>(
 
   const headers = new Headers(fetchOptions.headers);
 
-  /*
-   * Don't set Content-Type for FormData.
-   * The browser automatically sets the correct multipart boundary.
-   */
+  // Don't set Content-Type for FormData.
   if (!(fetchOptions.body instanceof FormData)) {
     headers.set("Content-Type", "application/json");
   }
 
-  /*
-   * Use explicitly provided token first.
-   * Otherwise use the token saved in localStorage.
-   */
+  // Use explicitly provided token first.
   const authToken = token ?? tokenStore.get();
 
   if (authToken) {
@@ -107,14 +101,7 @@ async function request<T>(
     headers,
   });
 
-  /* =======================================================
-     ERROR HANDLING
-     ======================================================= */
-
   if (!response.ok) {
-    /*
-     * Automatically handle expired/invalid JWT.
-     */
     if (response.status === 401) {
       unauthorizedHandler?.();
     }
@@ -125,42 +112,18 @@ async function request<T>(
     try {
       errorData = await response.json();
 
-      /*
-       * FastAPI normal string error:
-       *
-       * {
-       *   "detail": "Invalid credentials"
-       * }
-       */
       if (
         typeof errorData === "object" &&
         errorData !== null &&
         "detail" in errorData
       ) {
         const detail = (
-          errorData as {
-            detail?: unknown;
-          }
+          errorData as { detail?: unknown }
         ).detail;
 
         if (typeof detail === "string") {
           errorMessage = detail;
-        }
-
-        /*
-         * FastAPI validation error:
-         *
-         * {
-         *   "detail": [
-         *     {
-         *       "loc": [...],
-         *       "msg": "...",
-         *       "type": "..."
-         *     }
-         *   ]
-         * }
-         */
-        else if (Array.isArray(detail)) {
+        } else if (Array.isArray(detail)) {
           errorMessage = detail
             .map((item) => {
               if (
@@ -178,24 +141,13 @@ async function request<T>(
             })
             .join(", ");
         }
-      }
-
-      /*
-       * Generic API response:
-       *
-       * {
-       *   "message": "Something went wrong"
-       * }
-       */
-      else if (
+      } else if (
         typeof errorData === "object" &&
         errorData !== null &&
         "message" in errorData
       ) {
         const message = (
-          errorData as {
-            message?: unknown;
-          }
+          errorData as { message?: unknown }
         ).message;
 
         if (typeof message === "string") {
@@ -217,7 +169,6 @@ async function request<T>(
   return response.json();
 }
 
-
 /* =========================================================
    GENERAL TYPES
    ========================================================= */
@@ -233,12 +184,44 @@ export interface LoginData {
   password: string;
 }
 
+/* =========================================================
+   PROFILE TYPES
+   ========================================================= */
+
 export interface UserProfile {
   id: number;
   name: string;
   email: string;
+  target_role: string | null;
+  experience_level: string | null;
+  preferred_location: string | null;
+  college: string | null;
+  graduation_year: string | null;
 }
 
+export interface UserProfileUpdate {
+  name: string;
+  target_role: string | null;
+  experience_level: string | null;
+  preferred_location: string | null;
+  college: string | null;
+  graduation_year: string | null;
+}
+
+/* =========================================================
+   SETTINGS TYPES
+   ========================================================= */
+
+export interface UserSettings {
+  weeklyDigest: boolean;
+  skillGapAlerts: boolean;
+  streakReminders: boolean;
+  aggressiveMode: boolean;
+  includeGenAI: boolean;
+  prioritizeDSA: boolean;
+}
+
+export type UserSettingsUpdate = UserSettings;
 
 /* =========================================================
    ROADMAP TYPES
@@ -257,30 +240,21 @@ export interface RoadmapStage {
   description: string;
   duration_days: number;
   completion: number;
-  status:
-    | "completed"
-    | "current"
-    | "upcoming";
+  status: "completed" | "current" | "upcoming";
   items: RoadmapItem[];
 }
 
 export interface CareerRoadmap {
   id: number;
-
   target_role: string;
-
   readiness_score: number;
   summary: string;
-
   insights: string[];
   recommendations: string[];
-
   total_days: number;
   overall_completion: number;
-
   stages: RoadmapStage[];
 }
-
 
 /* =========================================================
    API
@@ -304,53 +278,56 @@ export const api = {
   },
 
   async login(data: LoginData) {
-    const response =
-      await request<AuthResponse>(
-        "/users/login",
-        {
-          method: "POST",
-          body: JSON.stringify(data),
-        },
-      );
+    const response = await request<AuthResponse>(
+      "/users/login",
+      {
+        method: "POST",
+        body: JSON.stringify(data),
+      },
+    );
 
-    /*
-     * Store token immediately.
-     *
-     * This is important because api.me()
-     * runs immediately after login.
-     */
     if (response.access_token) {
-      tokenStore.set(
-        response.access_token,
-      );
+      tokenStore.set(response.access_token);
     }
 
     return response;
   },
 
-  /*
-   * Get currently authenticated user.
-   */
   async me() {
-    return request<UserProfile>(
-      "/users/me",
-    );
+    return request<UserProfile>("/users/me");
   },
 
-  /*
-   * Compatibility method.
-   * Existing pages may use getProfile().
-   */
   async getProfile() {
-    return request<UserProfile>(
-      "/users/me",
-    );
+    return request<UserProfile>("/users/me");
+  },
+
+  async updateProfile(data: UserProfileUpdate) {
+    return request<UserProfile>("/users/me", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
   },
 
   logout() {
     tokenStore.clear();
   },
 
+  /* =======================================================
+     SETTINGS
+     ======================================================= */
+
+  async getSettings() {
+    return request<UserSettings>("/users/me/settings", {
+      method: "GET",
+    });
+  },
+
+  async updateSettings(data: UserSettingsUpdate) {
+    return request<UserSettings>("/users/me/settings", {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
 
   /* =======================================================
      DASHBOARD
@@ -359,41 +336,30 @@ export const api = {
   async getDashboard() {
     return request<{
       user: UserProfile;
-
       total_resumes: number;
       total_jobs: number;
-
       latest_resume: {
         id: number;
         filename: string;
       } | null;
-
       resume_score: number;
       candidate_summary: string;
-
       technical_skills: string[];
       soft_skills: string[];
-
       strengths: string[];
       weaknesses: string[];
       missing_skills: string[];
-
       suitable_job_roles: string[];
-
       skill_scores: Array<{
         skill: string;
         score: number;
       }>;
-
       improvement_suggestions: string[];
-
       placement_preparation_plan: string[];
-
       resumes: Array<{
         id: number;
         filename: string;
       }>;
-
       jobs: Array<{
         id: number;
         title: string;
@@ -402,16 +368,9 @@ export const api = {
     }>("/dashboard/");
   },
 
-  /*
-   * Compatibility method.
-   *
-   * Existing dashboard.tsx, roadmap.tsx and
-   * skill-gap.tsx use api.dashboard().
-   */
   async dashboard() {
     return this.getDashboard();
   },
-
 
   /* =======================================================
      RESUME
@@ -419,11 +378,7 @@ export const api = {
 
   async uploadResume(file: File) {
     const formData = new FormData();
-
-    formData.append(
-      "file",
-      file,
-    );
+    formData.append("file", file);
 
     return request<{
       message: string;
@@ -435,59 +390,41 @@ export const api = {
     });
   },
 
-  async analyzeResume(
-    resumeId: number,
-  ) {
+  async analyzeResume(resumeId: number) {
     return request<{
       message?: string;
       resume_id: number;
-
       analysis: {
         resume_score: number;
         candidate_summary: string;
-
         technical_skills: string[];
         soft_skills: string[];
-
         strengths: string[];
         weaknesses: string[];
         missing_skills: string[];
-
         suitable_job_roles: string[];
-
         improvement_suggestions: string[];
-
         placement_preparation_plan: string[];
-
         skill_scores: Array<{
           skill: string;
           score: number;
         }>;
       };
-    }>(
-      `/resumes/${resumeId}/analyze`,
-      {
-        method: "POST",
-      },
-    );
+    }>(`/resumes/${resumeId}/analyze`, {
+      method: "POST",
+    });
   },
 
-  async getResume(
-    resumeId: number | string,
-  ) {
+  async getResume(resumeId: number | string) {
     return request<{
       id: number;
       filename: string;
       extracted_text?: string;
       analysis?: string | null;
-    }>(
-      `/resumes/${resumeId}`,
-      {
-        method: "GET",
-      },
-    );
+    }>(`/resumes/${resumeId}`, {
+      method: "GET",
+    });
   },
-
 
   /* =======================================================
      JOBS
@@ -519,28 +456,17 @@ export const api = {
       company: string;
       job_title: string;
       analysis: JobMatch;
-    }>(
-      `/jobs/${jobId}/match/${resumeId}`,
-      {
-        method: "POST",
-      },
-    );
+    }>(`/jobs/${jobId}/match/${resumeId}`, {
+      method: "POST",
+    });
   },
 
-  /*
-   * Compatibility alias used by the
-   * existing Job Match page.
-   */
   async matchJob(
     jobId: number,
     resumeId: number,
   ) {
-    return this.matchResumeWithJob(
-      jobId,
-      resumeId,
-    );
+    return this.matchResumeWithJob(jobId, resumeId);
   },
-
 
   /* =======================================================
      SKILL GAP
@@ -550,70 +476,37 @@ export const api = {
     resumeId: number,
     jobId: number,
   ) {
-    /*
-     * IMPORTANT:
-     *
-     * Backend expects:
-     *
-     * POST /skill-gap/analyze
-     * ?resume_id=1
-     * &job_id=2
-     *
-     * Therefore these values MUST be query
-     * parameters and NOT JSON body fields.
-     */
-    const query =
-      new URLSearchParams({
-        resume_id: String(
-          resumeId,
-        ),
-        job_id: String(
-          jobId,
-        ),
-      });
+    const query = new URLSearchParams({
+      resume_id: String(resumeId),
+      job_id: String(jobId),
+    });
 
     return request<{
       resume_id: number;
       job_id: number;
-
       job_title: string;
       company: string;
-
       analysis: {
         readiness_score: number;
-
         skill_gaps: Array<{
           skill: string;
           current: number;
           required: number;
           gap: number;
-
-          priority:
-            | "HIGH"
-            | "MEDIUM"
-            | "LOW";
-
+          priority: "HIGH" | "MEDIUM" | "LOW";
           learning_days: number;
           reason: string;
           learning_plan: string[];
         }>;
-
         strengths: string[];
-
         top_priorities: string[];
-
         career_insights: string[];
-
         quick_wins: string[];
       };
-    }>(
-      `/skill-gap/analyze?${query.toString()}`,
-      {
-        method: "POST",
-      },
-    );
+    }>(`/skill-gap/analyze?${query.toString()}`, {
+      method: "POST",
+    });
   },
-
 
   /* =======================================================
      CAREER ROADMAP
@@ -624,35 +517,23 @@ export const api = {
     jobId: number,
     force = false,
   ) {
-    const query =
-      new URLSearchParams({
-        resume_id: String(
-          resumeId,
-        ),
-        job_id: String(
-          jobId,
-        ),
-        force: String(force),
-      });
+    const query = new URLSearchParams({
+      resume_id: String(resumeId),
+      job_id: String(jobId),
+      force: String(force),
+    });
 
     return request<{
       message?: string;
-
       resume_id: number;
       job_id: number;
-
       job_title: string;
       company: string;
-
       roadmap: CareerRoadmap;
-    }>(
-      `/roadmap/generate?${query.toString()}`,
-      {
-        method: "POST",
-      },
-    );
+    }>(`/roadmap/generate?${query.toString()}`, {
+      method: "POST",
+    });
   },
-
 
   /* =======================================================
      ROADMAP ITEM PERSISTENCE
@@ -664,25 +545,16 @@ export const api = {
   ) {
     return request<{
       message: string;
-
       item_id: number;
       stage_id: number;
-
       done: boolean;
-
       stage_completion: number;
       overall_completion: number;
-    }>(
-      `/roadmap/items/${itemId}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({
-          done,
-        }),
-      },
-    );
+    }>(`/roadmap/items/${itemId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ done }),
+    });
   },
-
 
   /* =======================================================
      INTERVIEW
@@ -698,12 +570,10 @@ export const api = {
   }) {
     return request<{
       session_id: number;
-
       role?: string;
       interview_type?: string;
       difficulty?: string;
       total_questions?: number;
-
       question_id: number;
       question: string;
     }>("/interview/start", {
@@ -712,40 +582,23 @@ export const api = {
     });
   },
 
-
-  /* -------------------------------------------------------
-     Evaluate interview answer
-     ------------------------------------------------------- */
-
-  async evaluateInterviewAnswer(
-    data: {
-      session_id: number;
-      question_id: number;
-      answer: string;
-    },
-  ) {
+  async evaluateInterviewAnswer(data: {
+    session_id: number;
+    question_id: number;
+    answer: string;
+  }) {
     return request<{
       question_id: number;
-
       score: number;
       feedback: string;
-
       strengths: string[];
-
       weaknesses?: string[];
-
       improvement_tips?: string[];
-
       improvements?: string[];
-
       ideal_answer?: string;
-
       next_question?: string;
-
       next_question_id?: number;
-
       interview_complete?: boolean;
-
       overall_score?: number;
     }>("/interview/evaluate", {
       method: "POST",
@@ -753,57 +606,32 @@ export const api = {
     });
   },
 
-
-  /* -------------------------------------------------------
-     Get next interview question
-     ------------------------------------------------------- */
-
-  async getNextInterviewQuestion(
-    sessionId: number,
-  ) {
+  async getNextInterviewQuestion(sessionId: number) {
     return request<{
       question_id: number;
-
       question: string;
-
       question_number?: number;
-
       total_questions?: number;
-
       interview_complete?: boolean;
-    }>(
-      `/interview/${sessionId}/next`,
-      {
-        method: "GET",
-      },
-    );
+    }>(`/interview/${sessionId}/next`, {
+      method: "GET",
+    });
   },
-
-
-  /* -------------------------------------------------------
-     Interview history
-     ------------------------------------------------------- */
 
   async getInterviewHistory() {
     return request<
       Array<{
         session_id: number;
-
         role?: string;
-
         score?: number;
-
         total_questions?: number;
-
         completed_at?: string;
-
         created_at?: string;
       }>
     >("/interview/history", {
       method: "GET",
     });
   },
-
 
   /* =======================================================
      AI CAREER COACH
@@ -816,12 +644,9 @@ export const api = {
       related_skills: string[];
     }>("/coach/chat", {
       method: "POST",
-      body: JSON.stringify({
-        message,
-      }),
+      body: JSON.stringify({ message }),
     });
   },
 };
-
 
 export default api;

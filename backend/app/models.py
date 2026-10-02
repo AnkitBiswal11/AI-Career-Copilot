@@ -1,3 +1,4 @@
+
 from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime
 from datetime import datetime, timezone
 
@@ -35,6 +36,32 @@ class User(Base):
     password = Column(
         String(255),
         nullable=False,
+    )
+
+    # Career profile
+    target_role = Column(
+        String(255),
+        nullable=True,
+    )
+
+    experience_level = Column(
+        String(100),
+        nullable=True,
+    )
+
+    preferred_location = Column(
+        String(255),
+        nullable=True,
+    )
+
+    college = Column(
+        String(255),
+        nullable=True,
+    )
+
+    graduation_year = Column(
+        String(10),
+        nullable=True,
     )
 
 
@@ -380,3 +407,35 @@ class RoadmapItem(Base):
         Integer,
         default=1,
     )
+
+
+
+
+
+    
+# ============================================================
+# USER SETTINGS
+# ============================================================
+
+class UserSettings(Base):
+    __tablename__ = "user_settings"
+
+    id = Column(
+        Integer,
+        primary_key=True,
+        index=True,
+    )
+
+    user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        unique=True,
+        nullable=False,
+    )
+
+    weekly_digest = Column(Integer, default=1, nullable=False)
+    skill_gap_alerts = Column(Integer, default=1, nullable=False)
+    streak_reminders = Column(Integer, default=1, nullable=False)
+    aggressive_mode = Column(Integer, default=0, nullable=False)
+    include_genai = Column(Integer, default=1, nullable=False)
+    prioritize_dsa = Column(Integer, default=1, nullable=False)

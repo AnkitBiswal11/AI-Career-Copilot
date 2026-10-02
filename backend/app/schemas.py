@@ -1,3 +1,4 @@
+
 from pydantic import BaseModel
 
 
@@ -11,6 +12,23 @@ class UserLogin(BaseModel):
     email: str
     password: str
 
+
+# ============================================================
+# USER PROFILE SCHEMAS
+# ============================================================
+
+class UserProfileUpdate(BaseModel):
+    name: str
+    target_role: str | None = None
+    experience_level: str | None = None
+    preferred_location: str | None = None
+    college: str | None = None
+    graduation_year: str | None = None
+
+
+# ============================================================
+# JOB SCHEMAS
+# ============================================================
 
 class JobCreate(BaseModel):
     title: str
@@ -65,6 +83,10 @@ class InterviewHistoryItem(BaseModel):
     score: int | None
     created_at: str
 
+
+# ============================================================
+# ROADMAP SCHEMAS
+# ============================================================
 
 class RoadmapItemUpdate(BaseModel):
     done: bool
