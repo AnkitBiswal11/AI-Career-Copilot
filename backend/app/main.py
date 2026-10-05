@@ -47,6 +47,8 @@ app.add_middleware(
         "http://localhost:8081",
         "http://127.0.0.1:8081",
     ],
+    # Automatically allows any Vercel domain (main or preview branch)
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
