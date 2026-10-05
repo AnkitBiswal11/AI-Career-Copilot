@@ -42,13 +42,13 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
         "http://localhost:8080",
         "http://127.0.0.1:8080",
-        "http://localhost:8081",
-        "http://127.0.0.1:8081",
+        "https://ai-career-copilot-ycga.vercel.app",  # The exact URL from your screenshot
+        "https://ai-career-copilot.vercel.app",       # Your main production URL
     ],
-    # Automatically allows any Vercel domain (main or preview branch)
-    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
