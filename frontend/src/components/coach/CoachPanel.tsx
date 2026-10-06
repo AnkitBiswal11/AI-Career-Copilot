@@ -79,11 +79,11 @@ export function CoachConversation({
   };
 
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex h-full min-h-0 flex-col">
       {/* Messages */}
       <div
         className={cn(
-          "flex-1 space-y-4 overflow-y-auto p-5",
+          "min-h-0 flex-1 space-y-4 overflow-y-auto p-5",
           compact && "p-4",
         )}
       >
@@ -171,7 +171,7 @@ export function CoachConversation({
       </div>
 
       {/* Input */}
-      <div className="border-t border-border p-4">
+      <div className="shrink-0 border-t border-border bg-card p-4">
         {/* Suggestions */}
         <div className="flex flex-wrap gap-1.5">
           {coachSuggestions
@@ -181,7 +181,7 @@ export function CoachConversation({
                 key={suggestion}
                 type="button"
                 disabled={loading}
-                onClick={() => send(suggestion)}
+                onClick={() => void send(suggestion)}
                 className="rounded-full border border-border bg-card px-2.5 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:border-primary/40 hover:text-primary disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {suggestion}
@@ -204,13 +204,13 @@ export function CoachConversation({
             onChange={(event) => setInput(event.target.value)}
             disabled={loading}
             placeholder="Ask Career Copilot..."
-            className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground disabled:opacity-50"
           />
 
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="rounded-lg bg-primary p-1.5 text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            className="shrink-0 rounded-lg bg-primary p-1.5 text-primary-foreground transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Send message"
           >
             {loading ? (
