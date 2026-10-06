@@ -1,6 +1,6 @@
-
 import json
-import ollama
+
+from .ai_provider import chat
 
 
 def _clean_json_response(content: str) -> dict:
@@ -181,16 +181,13 @@ TARGET JOB:
 """
 
     try:
-        response = ollama.chat(
-            model="qwen3:4b",
+        response = chat(
             messages=[
                 {
                     "role": "user",
                     "content": prompt,
                 }
-            ],
-            format="json",
-            think=False,
+            ]
         )
 
         result = _clean_json_response(
@@ -222,7 +219,7 @@ TARGET JOB:
         raw_stages = result.get("stages", [])
 
         if isinstance(raw_stages, list):
-            for index, stage in enumerate(raw_stages):
+            for stage in raw_stages:
                 if not isinstance(stage, dict):
                     continue
 

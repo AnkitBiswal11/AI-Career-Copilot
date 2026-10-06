@@ -1,14 +1,13 @@
 import json
-import ollama
+from .ai_provider import chat
 
 
 def _clean_json_response(content: str) -> dict:
     """
-    Safely convert the Ollama response into a Python dictionary.
+    Safely convert the AI response into a Python dictionary.
     """
 
     content = content.strip()
-    
 
     # Remove markdown code fences if the model returns them.
     if content.startswith("```"):
@@ -86,16 +85,13 @@ Use exactly this structure:
 }}
 """
 
-    response = ollama.chat(
-        model="qwen3:4b",
+    response = chat(
         messages=[
             {
                 "role": "user",
                 "content": prompt,
             }
-        ],
-        format="json",
-        think=False,
+        ]
     )
 
     return _clean_json_response(response["message"]["content"])
@@ -157,16 +153,13 @@ Use exactly this structure:
 }}
 """
 
-    response = ollama.chat(
-        model="qwen3:4b",
+    response = chat(
         messages=[
             {
                 "role": "user",
                 "content": prompt,
             }
-        ],
-        format="json",
-        think=False,
+        ]
     )
 
     result = _clean_json_response(response["message"]["content"])

@@ -1,8 +1,6 @@
 import json
-import ollama
 
-
-MODEL_NAME = "qwen3:4b"
+from .ai_provider import chat
 
 
 def generate_coach_response(message: str, context: dict) -> dict:
@@ -66,8 +64,7 @@ Rules:
 """
 
     try:
-        response = ollama.chat(
-            model=MODEL_NAME,
+        response = chat(
             messages=[
                 {
                     "role": "system",
@@ -80,15 +77,13 @@ Rules:
                     "role": "user",
                     "content": prompt,
                 },
-            ],
-            format="json",
-            think=False,
+            ]
         )
 
         raw = response["message"]["content"].strip()
 
         print("\n========== COACH DEBUG ==========")
-        print("RAW OLLAMA RESPONSE:")
+        print("RAW AI RESPONSE:")
         print(raw)
 
         data = json.loads(raw)
@@ -100,7 +95,7 @@ Rules:
         # Validate the expected Coach response.
         if not isinstance(answer, str) or not answer.strip():
             raise ValueError(
-                "Ollama returned JSON without a valid 'answer' field."
+                "AI provider returned JSON without a valid 'answer' field."
             )
 
         if not isinstance(action_items, list):

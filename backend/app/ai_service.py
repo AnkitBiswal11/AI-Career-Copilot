@@ -1,6 +1,7 @@
 import json
 import re
-import ollama
+
+from .ai_provider import chat
 
 
 def extract_json(text: str) -> dict:
@@ -91,19 +92,13 @@ RESUME:
 """
 
     try:
-        response = ollama.chat(
-            model="qwen3:4b",
+        response = chat(
             messages=[
                 {
                     "role": "user",
                     "content": prompt,
                 }
-            ],
-            format="json",
-            think=False,
-            options={
-                "temperature": 0,
-            },
+            ]
         )
 
         content = response["message"]["content"].strip()

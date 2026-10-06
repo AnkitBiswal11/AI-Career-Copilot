@@ -1,5 +1,6 @@
 import json
-import ollama
+
+from .ai_provider import chat
 
 
 def _clean_json_response(content: str) -> dict:
@@ -92,16 +93,13 @@ JOB DESCRIPTION:
 """
 
     try:
-        response = ollama.chat(
-            model="qwen3:4b",
+        response = chat(
             messages=[
                 {
                     "role": "user",
                     "content": prompt,
                 }
-            ],
-            format="json",
-            think=False,
+            ]
         )
 
         result = _clean_json_response(
