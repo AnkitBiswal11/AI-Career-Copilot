@@ -448,6 +448,30 @@ export const api = {
     });
   },
 
+   
+  async updateJob(
+    jobId: number,
+    data: {
+      title: string;
+      company: string;
+      description: string;
+    },
+  ) {
+    return request<{
+      message: string;
+      job_id: number;
+      title: string;
+      company: string;
+    }>(`/jobs/${jobId}`, {
+      method: "PUT",
+      body: JSON.stringify(data),
+    });
+  },
+
+   
+
+
+
   async matchResumeWithJob(
     jobId: number,
     resumeId: number,
