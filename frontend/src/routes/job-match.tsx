@@ -240,7 +240,13 @@ function JobMatchPage() {
       const currentJobId = savedJob.job_id;
 
       setJobId(currentJobId);
-
+      
+      // Save the latest analyzed job ID for Skill Gap Analysis.
+      window.localStorage.setItem(
+        "cc_job_id",
+        String(currentJobId),
+      );
+      
       setSavingJob(false);
 
       /*
