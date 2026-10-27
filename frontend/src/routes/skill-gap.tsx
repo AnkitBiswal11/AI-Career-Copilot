@@ -81,9 +81,15 @@ function SkillGapPage() {
         dashboard.resumes?.[0]?.id ??
         null;
 
+      const savedJobId =
+        window.localStorage.getItem("cc_job_id");
+      
+      const savedJob = dashboard.jobs?.find(
+        (job) => String(job.id) === savedJobId,
+      );
+      
       const selectedJob =
-        dashboard.jobs?.[0]?.id ??
-        null;
+        savedJob?.id ?? dashboard.jobs?.[0]?.id ?? null;
 
       if (!selectedResume) {
         throw new Error(
