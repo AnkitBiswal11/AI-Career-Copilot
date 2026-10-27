@@ -36,6 +36,13 @@ class JobCreate(BaseModel):
     description: str
 
 
+class JobUpdate(BaseModel):
+    title: str
+    company: str
+    description: str
+
+
+
 # ============================================================
 # INTERVIEW COACH SCHEMAS
 # ============================================================
