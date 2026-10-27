@@ -44,7 +44,7 @@ type SkillGap = {
   priority: "HIGH" | "MEDIUM" | "LOW";
   learning_days: number;
   reason: string;
-  learning_plan: string[];
+  learning_plan: string[] | string;
 };
 
 type SkillGapAnalysis = {
@@ -58,6 +58,8 @@ type SkillGapAnalysis = {
 };
 
 type AnalysisResponse = {
+  resume_id?: number;
+  job_id?: number;
   job_title?: string;
   company?: string;
   analysis: SkillGapAnalysis;
@@ -65,6 +67,8 @@ type AnalysisResponse = {
 
 type DashboardJob = {
   id: number | string;
+  title?: string;
+  company?: string;
 };
 
 type DashboardData = {
@@ -82,9 +86,9 @@ function normalizeAnalysis(
 
   const score = Number(data.readiness_score);
 
-  if (!Number.isFinite(score)) {
+  if (!Number.isFinite(score) || score < 0 || score > 100) {
     throw new Error(
-      "The AI returned an invalid readiness score. Please regenerate the analysis.",
+      "The AI returned an invalid readiness score. Please try again and check the backend logs if the problem continues.",
     );
   }
 
@@ -108,8 +112,6 @@ function normalizeAnalysis(
     ? data.quick_wins
     : [];
 
-  // Avoid silently presenting a failed or empty AI response
-  // as a successful analysis.
   if (
     score === 0 &&
     skillGaps.length === 0 &&
@@ -119,12 +121,12 @@ function normalizeAnalysis(
     quickWins.length === 0
   ) {
     throw new Error(
-      "The AI returned an empty skill-gap analysis. Please try again. If this continues, check the backend AI provider and its logs.",
+      "The AI returned an empty skill-gap analysis. Check the backend AI provider configuration and logs, then try again.",
     );
   }
 
   return {
-    readiness_score: Math.min(100, Math.max(0, score)),
+    readiness_score: score,
     skill_gaps: skillGaps,
     strengths,
     top_priorities: priorities,
@@ -175,27 +177,31 @@ function SkillGapPage() {
         dashboard.resumes?.[0]?.id ??
         null;
 
-      const savedJobId =
-        window.localStorage.getItem("cc_job_id");
-
-      const savedJob = dashboard.jobs?.find(
-        (job) => String(job.id) === savedJobId,
-      );
-
-      const selectedJob =
-        savedJob?.id ??
-        dashboard.jobs?.[0]?.id ??
-        null;
-
       if (selectedResume === null) {
         throw new Error(
           "Please upload and analyze a resume first.",
         );
       }
 
+      // Use only the job ID saved after a successful Job Match.
+      const savedJobId =
+        window.localStorage.getItem("cc_job_id");
+
+      if (!savedJobId) {
+        throw new Error(
+          "No recently analyzed job was found. Open Job Match, enter a job description, and click Analyze Match first.",
+        );
+      }
+
+      const selectedJob =
+        dashboard.jobs?.find(
+          (job) => String(job.id) === savedJobId,
+        )?.id ?? null;
+
+      // Do not silently analyze a different, older job.
       if (selectedJob === null) {
         throw new Error(
-          "No saved job description was found. Open Job Match, enter a job description, and click Analyze Match first.",
+          "The latest analyzed job was not found in your dashboard. Return to Job Match and click Analyze Match again.",
         );
       }
 
@@ -206,6 +212,16 @@ function SkillGapPage() {
         selectedResume,
         selectedJob,
       )) as AnalysisResponse;
+
+      // Prevent a response for a different job from being displayed.
+      if (
+        result.job_id !== undefined &&
+        String(result.job_id) !== String(selectedJob)
+      ) {
+        throw new Error(
+          "The backend returned an analysis for a different job. Please run Job Match again.",
+        );
+      }
 
       applyResult(result);
     } catch (err) {
@@ -228,7 +244,7 @@ function SkillGapPage() {
   const regenerate = async () => {
     if (resumeId === null || jobId === null) {
       setError(
-        "A resume and saved job description are required. Please try reloading the page.",
+        "A resume and recently analyzed job are required. Open Job Match and click Analyze Match first.",
       );
       return;
     }
@@ -242,12 +258,18 @@ function SkillGapPage() {
         jobId,
       )) as AnalysisResponse;
 
+      if (
+        result.job_id !== undefined &&
+        String(result.job_id) !== String(jobId)
+      ) {
+        throw new Error(
+          "The backend returned an analysis for a different job. Please reload the page and try again.",
+        );
+      }
+
       applyResult(result);
     } catch (err) {
-      console.error(
-        "Skill gap regeneration failed:",
-        err,
-      );
+      console.error("Skill gap regeneration failed:", err);
 
       setError(
         err instanceof Error
@@ -301,7 +323,7 @@ function SkillGapPage() {
       >
         <Panel>
           <div className="flex min-h-[500px] flex-col items-center justify-center px-5 text-center">
-            <AlertTriangle className="mb-4 h-10 w-10" />
+            <AlertTriangle className="mb-4 h-10 w-10 text-destructive" />
 
             <h2 className="text-xl font-semibold">
               Unable to load Skill Gap
@@ -370,7 +392,6 @@ function SkillGapPage() {
           <div>
             <div className="flex items-center gap-2">
               <Sparkles className="h-5 w-5" />
-
               <h1 className="text-2xl font-bold">
                 Skill Gap Analysis
               </h1>
@@ -394,10 +415,7 @@ function SkillGapPage() {
                 analyzing && "animate-spin",
               )}
             />
-
-            {analyzing
-              ? "Analyzing..."
-              : "Regenerate Analysis"}
+            {analyzing ? "Analyzing..." : "Regenerate Analysis"}
           </button>
         </div>
 
@@ -409,16 +427,13 @@ function SkillGapPage() {
                 <p className="text-sm text-muted-foreground">
                   Career Readiness
                 </p>
-
                 <p className="mt-2 text-3xl font-bold">
                   {analysis.readiness_score}%
                 </p>
-
                 <p className="mt-1 text-xs text-muted-foreground">
                   AI-estimated job readiness
                 </p>
               </div>
-
               <div className="rounded-xl border p-3">
                 <Target className="h-6 w-6" />
               </div>
@@ -431,16 +446,13 @@ function SkillGapPage() {
                 <p className="text-sm text-muted-foreground">
                   Skill Gaps
                 </p>
-
                 <p className="mt-2 text-3xl font-bold">
                   {analysis.skill_gaps.length}
                 </p>
-
                 <p className="mt-1 text-xs text-muted-foreground">
                   Areas to improve
                 </p>
               </div>
-
               <div className="rounded-xl border p-3">
                 <TrendingUp className="h-6 w-6" />
               </div>
@@ -453,16 +465,13 @@ function SkillGapPage() {
                 <p className="text-sm text-muted-foreground">
                   Top Priorities
                 </p>
-
                 <p className="mt-2 text-3xl font-bold">
                   {analysis.top_priorities.length}
                 </p>
-
                 <p className="mt-1 text-xs text-muted-foreground">
                   Recommended focus areas
                 </p>
               </div>
-
               <div className="rounded-xl border p-3">
                 <AlertTriangle className="h-6 w-6" />
               </div>
@@ -479,10 +488,7 @@ function SkillGapPage() {
 
           <div className="h-[400px] w-full">
             {chartData.length > 0 ? (
-              <ResponsiveContainer
-                width="100%"
-                height="100%"
-              >
+              <ResponsiveContainer width="100%" height="100%">
                 <BarChart
                   data={chartData}
                   margin={{
@@ -522,12 +528,6 @@ function SkillGapPage() {
                         : "Required Level",
                     ]}
                     labelFormatter={(label) => `Skill: ${label}`}
-                    contentStyle={{
-                      borderRadius: "10px",
-                      border: "1px solid hsl(var(--border))",
-                      boxShadow:
-                        "0 8px 24px rgba(0,0,0,0.08)",
-                    }}
                   />
 
                   <Legend
@@ -584,12 +584,10 @@ function SkillGapPage() {
           <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2">
             <div className="flex items-center gap-3 rounded-lg border p-3">
               <div className="h-3 w-3 shrink-0 rounded-full bg-blue-600" />
-
               <div>
                 <p className="text-sm font-medium">
                   Your Current Level
                 </p>
-
                 <p className="text-xs text-muted-foreground">
                   Estimated from your resume
                 </p>
@@ -598,12 +596,10 @@ function SkillGapPage() {
 
             <div className="flex items-center gap-3 rounded-lg border p-3">
               <div className="h-3 w-3 shrink-0 rounded-full bg-purple-600" />
-
               <div>
                 <p className="text-sm font-medium">
                   Required Level
                 </p>
-
                 <p className="text-xs text-muted-foreground">
                   Expected for the target role
                 </p>
@@ -631,7 +627,6 @@ function SkillGapPage() {
                       <h3 className="font-semibold">
                         {item.skill}
                       </h3>
-
                       <PriorityTag priority={item.priority} />
                     </div>
 
@@ -665,44 +660,42 @@ function SkillGapPage() {
                   </div>
                 </div>
 
-                {item.learning_plan?.length > 0 && (
-                  <div className="mt-5">
-                    <p className="mb-2 text-sm font-medium">
-                      Recommended learning plan
-                    </p>
+                {Array.isArray(item.learning_plan) &&
+                  item.learning_plan.length > 0 && (
+                    <div className="mt-5">
+                      <p className="mb-2 text-sm font-medium">
+                        Recommended learning plan
+                      </p>
 
-                    <ul className="space-y-2">
-                      {item.learning_plan.map(
-                        (step, index) => (
-                          <li
-                            key={`${item.skill}-${index}`}
-                            className="flex gap-2 text-sm text-muted-foreground"
-                          >
-                            <span className="mt-0.5">
-                              {index + 1}.
-                            </span>
-
-                            <span>{step}</span>
-                          </li>
-                        ),
-                      )}
-                    </ul>
-                  </div>
-                )}
+                      <ul className="space-y-2">
+                        {item.learning_plan.map(
+                          (step, stepIndex) => (
+                            <li
+                              key={`${item.skill}-${stepIndex}`}
+                              className="flex gap-2 text-sm text-muted-foreground"
+                            >
+                              <span className="mt-0.5">
+                                {stepIndex + 1}.
+                              </span>
+                              <span>{step}</span>
+                            </li>
+                          ),
+                        )}
+                      </ul>
+                    </div>
+                  )}
               </div>
             ))}
 
             {analysis.skill_gaps.length === 0 && (
               <div className="flex items-center gap-3 rounded-xl border p-5">
                 <CheckCircle2 className="h-5 w-5" />
-
                 <div>
                   <p className="font-medium">
                     No skill gaps returned
                   </p>
-
                   <p className="text-sm text-muted-foreground">
-                    The AI did not identify any skill gaps for this role. Review the other analysis details to confirm the result is meaningful.
+                    The AI did not identify any skill gaps for this role. Review the analysis details to confirm the result is meaningful.
                   </p>
                 </div>
               </div>
@@ -719,18 +712,15 @@ function SkillGapPage() {
             />
 
             <div className="space-y-3">
-              {analysis.strengths.map(
-                (strength, index) => (
-                  <div
-                    key={`strength-${index}`}
-                    className="flex items-start gap-3 rounded-lg border p-3"
-                  >
-                    <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
-
-                    <span className="text-sm">{strength}</span>
-                  </div>
-                ),
-              )}
+              {analysis.strengths.map((strength, index) => (
+                <div
+                  key={`strength-${index}`}
+                  className="flex items-start gap-3 rounded-lg border p-3"
+                >
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+                  <span className="text-sm">{strength}</span>
+                </div>
+              ))}
 
               {analysis.strengths.length === 0 && (
                 <p className="text-sm text-muted-foreground">
@@ -756,7 +746,6 @@ function SkillGapPage() {
                     <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-xs font-semibold">
                       {index + 1}
                     </span>
-
                     <span className="text-sm">{priority}</span>
                   </div>
                 ),
@@ -778,16 +767,14 @@ function SkillGapPage() {
               AI Career Insights
             </h2>
 
-            {analysis.career_insights.map(
-              (insight, index) => (
-                <AiInsight
-                  key={`insight-${index}`}
-                  label={`Career Insight ${index + 1}`}
-                >
-                  {insight}
-                </AiInsight>
-              ),
-            )}
+            {analysis.career_insights.map((insight, index) => (
+              <AiInsight
+                key={`insight-${index}`}
+                label={`Career Insight ${index + 1}`}
+              >
+                {insight}
+              </AiInsight>
+            ))}
 
             {analysis.career_insights.length === 0 && (
               <div className="rounded-xl border p-5 text-sm text-muted-foreground">
