@@ -1,4 +1,3 @@
-
 const API_BASE_URL =
   import.meta.env["VITE_API_URL"] ||
   "https://ai-career-copilot-backend-tptj.onrender.com";
@@ -93,15 +92,34 @@ export type CreateJobResponse = {
   company: string;
 };
 
+export type JobMatchAnalysis = {
+  match_score: number;
+  recommendation: string;
+  matching_skills: string[];
+  missing_skills: string[];
+  recommended_learning: string[];
+  strengths: string[];
+  weaknesses: string[];
+  interview_topics: string[];
+};
+
+export type JobMatchResponse = {
+  job_id?: number;
+  resume_id?: number;
+  job_title: string;
+  company: string;
+  analysis: JobMatchAnalysis;
+};
+
 export type SkillGap = {
   skill: string;
-  current_level?: string;
-  required_level?: string;
-  gap?: string;
-  priority?: string;
-  learning_days?: number;
-  reason?: string;
-  learning_plan?: string[] | string;
+  current: number;
+  required: number;
+  gap: number;
+  priority: "HIGH" | "MEDIUM" | "LOW";
+  learning_days: number;
+  reason: string;
+  learning_plan: string[];
 };
 
 export type SkillGapAnalysis = {
@@ -131,8 +149,8 @@ const api = {
     return request<DashboardData>("/dashboard/");
   },
 
-  async getResume(resumeId: number): Promise<Resume> {
-    return request<Resume>(`/resumes/${resumeId}`);
+  async getResume(resumeId: number | string): Promise<Resume> {
+    return request<Resume>(`/resumes/${encodeURIComponent(resumeId)}`);
   },
 
   async createJob(data: JobData): Promise<CreateJobResponse> {
@@ -154,10 +172,10 @@ const api = {
 
   async matchResumeWithJob(
     jobId: number,
-    resumeId: number,
+    resumeId: number | string,
   ): Promise<Record<string, unknown>> {
     return request<Record<string, unknown>>(
-      `/jobs/${jobId}/match/${resumeId}`,
+      `/jobs/${jobId}/match/${encodeURIComponent(resumeId)}`,
       {
         method: "POST",
       },
@@ -166,19 +184,19 @@ const api = {
 
   async matchJob(
     jobId: number,
-    resumeId: number,
+    resumeId: number | string,
   ): Promise<Record<string, unknown>> {
     return this.matchResumeWithJob(jobId, resumeId);
   },
 
   async analyzeSkillGap(
-    resumeId: number,
-    jobId: number,
+    resumeId: number | string,
+    jobId: number | string,
   ): Promise<SkillGapResponse> {
     return request<SkillGapResponse>(
       `/skill-gap/analyze?resume_id=${encodeURIComponent(
-        resumeId,
-      )}&job_id=${encodeURIComponent(jobId)}`,
+        String(resumeId),
+      )}&job_id=${encodeURIComponent(String(jobId))}`,
       {
         method: "POST",
       },
@@ -187,3 +205,5 @@ const api = {
 };
 
 export default api;
+
+export { api };
