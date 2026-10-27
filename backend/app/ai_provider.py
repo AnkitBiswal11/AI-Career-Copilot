@@ -1,4 +1,4 @@
-```python
+
 import os
 import logging
 
@@ -83,4 +83,4 @@ def chat(messages):
             "content": content.strip()
         }
     }
-```
+
