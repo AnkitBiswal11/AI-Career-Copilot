@@ -1,3 +1,4 @@
+
 import { useEffect, useMemo, useState } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import {
@@ -53,14 +54,97 @@ type SkillGapAnalysis = {
   top_priorities: string[];
   career_insights: string[];
   quick_wins: string[];
+  error?: string;
 };
 
-function SkillGapPage() {
-  const [resumeId, setResumeId] = useState<number | null>(null);
-  const [jobId, setJobId] = useState<number | null>(null);
+type AnalysisResponse = {
+  job_title?: string;
+  company?: string;
+  analysis: SkillGapAnalysis;
+};
 
-  const [jobTitle, setJobTitle] = useState<string | null>(null);
-  const [company, setCompany] = useState<string | null>(null);
+type DashboardJob = {
+  id: number | string;
+};
+
+type DashboardData = {
+  latest_resume?: { id: number | string } | null;
+  resumes?: { id: number | string }[];
+  jobs?: DashboardJob[];
+};
+
+function normalizeAnalysis(
+  data: SkillGapAnalysis,
+): SkillGapAnalysis {
+  if (data.error) {
+    throw new Error(data.error);
+  }
+
+  const score = Number(data.readiness_score);
+
+  if (!Number.isFinite(score)) {
+    throw new Error(
+      "The AI returned an invalid readiness score. Please regenerate the analysis.",
+    );
+  }
+
+  const skillGaps = Array.isArray(data.skill_gaps)
+    ? data.skill_gaps
+    : [];
+
+  const strengths = Array.isArray(data.strengths)
+    ? data.strengths
+    : [];
+
+  const priorities = Array.isArray(data.top_priorities)
+    ? data.top_priorities
+    : [];
+
+  const insights = Array.isArray(data.career_insights)
+    ? data.career_insights
+    : [];
+
+  const quickWins = Array.isArray(data.quick_wins)
+    ? data.quick_wins
+    : [];
+
+  // Avoid silently presenting a failed or empty AI response
+  // as a successful analysis.
+  if (
+    score === 0 &&
+    skillGaps.length === 0 &&
+    strengths.length === 0 &&
+    priorities.length === 0 &&
+    insights.length === 0 &&
+    quickWins.length === 0
+  ) {
+    throw new Error(
+      "The AI returned an empty skill-gap analysis. Please try again. If this continues, check the backend AI provider and its logs.",
+    );
+  }
+
+  return {
+    readiness_score: Math.min(100, Math.max(0, score)),
+    skill_gaps: skillGaps,
+    strengths,
+    top_priorities: priorities,
+    career_insights: insights,
+    quick_wins: quickWins,
+  };
+}
+
+function SkillGapPage() {
+  const [resumeId, setResumeId] =
+    useState<number | string | null>(null);
+
+  const [jobId, setJobId] =
+    useState<number | string | null>(null);
+
+  const [jobTitle, setJobTitle] =
+    useState<string | null>(null);
+
+  const [company, setCompany] =
+    useState<string | null>(null);
 
   const [analysis, setAnalysis] =
     useState<SkillGapAnalysis | null>(null);
@@ -69,12 +153,22 @@ function SkillGapPage() {
   const [analyzing, setAnalyzing] = useState(false);
   const [error, setError] = useState("");
 
+  const applyResult = (result: AnalysisResponse) => {
+    const normalized = normalizeAnalysis(result.analysis);
+
+    setJobTitle(result.job_title ?? "Target Role");
+    setCompany(result.company ?? null);
+    setAnalysis(normalized);
+  };
+
   const loadSkillGap = async () => {
     try {
       setLoading(true);
       setError("");
+      setAnalysis(null);
 
-      const dashboard = await api.dashboard();
+      const dashboard =
+        (await api.dashboard()) as DashboardData;
 
       const selectedResume =
         dashboard.latest_resume?.id ??
@@ -83,61 +177,44 @@ function SkillGapPage() {
 
       const savedJobId =
         window.localStorage.getItem("cc_job_id");
-      
+
       const savedJob = dashboard.jobs?.find(
         (job) => String(job.id) === savedJobId,
       );
-      
-      const selectedJob =
-        savedJob?.id ?? dashboard.jobs?.[0]?.id ?? null;
 
-      if (!selectedResume) {
+      const selectedJob =
+        savedJob?.id ??
+        dashboard.jobs?.[0]?.id ??
+        null;
+
+      if (selectedResume === null) {
         throw new Error(
-          "Please upload a resume first.",
+          "Please upload and analyze a resume first.",
         );
       }
 
-      if (!selectedJob) {
+      if (selectedJob === null) {
         throw new Error(
-          "Please add a job description first.",
+          "No saved job description was found. Open Job Match, enter a job description, and click Analyze Match first.",
         );
       }
 
       setResumeId(selectedResume);
       setJobId(selectedJob);
 
-      const result = await api.analyzeSkillGap(
+      const result = (await api.analyzeSkillGap(
         selectedResume,
         selectedJob,
-      );
+      )) as AnalysisResponse;
 
-      setJobTitle(result.job_title);
-      setCompany(result.company);
-
-      setAnalysis({
-        readiness_score:
-          result.analysis.readiness_score ?? 0,
-
-        skill_gaps:
-          result.analysis.skill_gaps ?? [],
-
-        strengths:
-          result.analysis.strengths ?? [],
-
-        top_priorities:
-          result.analysis.top_priorities ?? [],
-
-        career_insights:
-          result.analysis.career_insights ?? [],
-
-        quick_wins:
-          result.analysis.quick_wins ?? [],
-      });
+      applyResult(result);
     } catch (err) {
+      console.error("Skill gap analysis failed:", err);
+
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to load skill gap analysis.",
+          : "Failed to load skill-gap analysis.",
       );
     } finally {
       setLoading(false);
@@ -145,11 +222,14 @@ function SkillGapPage() {
   };
 
   useEffect(() => {
-    loadSkillGap();
+    void loadSkillGap();
   }, []);
 
   const regenerate = async () => {
-    if (!resumeId || !jobId) {
+    if (resumeId === null || jobId === null) {
+      setError(
+        "A resume and saved job description are required. Please try reloading the page.",
+      );
       return;
     }
 
@@ -157,38 +237,22 @@ function SkillGapPage() {
       setAnalyzing(true);
       setError("");
 
-      const result = await api.analyzeSkillGap(
+      const result = (await api.analyzeSkillGap(
         resumeId,
         jobId,
+      )) as AnalysisResponse;
+
+      applyResult(result);
+    } catch (err) {
+      console.error(
+        "Skill gap regeneration failed:",
+        err,
       );
 
-      setJobTitle(result.job_title);
-      setCompany(result.company);
-
-      setAnalysis({
-        readiness_score:
-          result.analysis.readiness_score ?? 0,
-
-        skill_gaps:
-          result.analysis.skill_gaps ?? [],
-
-        strengths:
-          result.analysis.strengths ?? [],
-
-        top_priorities:
-          result.analysis.top_priorities ?? [],
-
-        career_insights:
-          result.analysis.career_insights ?? [],
-
-        quick_wins:
-          result.analysis.quick_wins ?? [],
-      });
-    } catch (err) {
       setError(
         err instanceof Error
           ? err.message
-          : "Failed to regenerate skill gap analysis.",
+          : "Failed to regenerate skill-gap analysis.",
       );
     } finally {
       setAnalyzing(false);
@@ -203,11 +267,11 @@ function SkillGapPage() {
     return analysis.skill_gaps.map((item) => ({
       skill: item.skill,
       Current: Math.min(
-        Math.max(item.current, 0),
+        Math.max(Number(item.current) || 0, 0),
         100,
       ),
       Required: Math.min(
-        Math.max(item.required, 0),
+        Math.max(Number(item.required) || 0, 0),
         100,
       ),
     }));
@@ -222,10 +286,7 @@ function SkillGapPage() {
         <div className="flex min-h-[500px] items-center justify-center">
           <div className="flex items-center gap-3 text-muted-foreground">
             <RefreshCw className="h-5 w-5 animate-spin" />
-
-            <span>
-              Analyzing your skill profile...
-            </span>
+            <span>Analyzing your skill profile...</span>
           </div>
         </div>
       </AppShell>
@@ -239,7 +300,7 @@ function SkillGapPage() {
         subtitle="AI-powered analysis of your career readiness"
       >
         <Panel>
-          <div className="flex min-h-[500px] flex-col items-center justify-center text-center">
+          <div className="flex min-h-[500px] flex-col items-center justify-center px-5 text-center">
             <AlertTriangle className="mb-4 h-10 w-10" />
 
             <h2 className="text-xl font-semibold">
@@ -252,7 +313,7 @@ function SkillGapPage() {
 
             <button
               type="button"
-              onClick={loadSkillGap}
+              onClick={() => void loadSkillGap()}
               className="mt-6 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-muted"
             >
               <RefreshCw className="h-4 w-4" />
@@ -280,12 +341,12 @@ function SkillGapPage() {
               </h2>
 
               <p className="mt-2 text-sm text-muted-foreground">
-                Please try generating the skill gap analysis again.
+                Please try generating the skill-gap analysis again.
               </p>
 
               <button
                 type="button"
-                onClick={loadSkillGap}
+                onClick={() => void loadSkillGap()}
                 className="mt-5 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-muted"
               >
                 <RefreshCw className="h-4 w-4" />
@@ -304,7 +365,6 @@ function SkillGapPage() {
       subtitle="AI-powered analysis of your career readiness"
     >
       <div className="space-y-6">
-
         {/* Header */}
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
           <div>
@@ -318,16 +378,13 @@ function SkillGapPage() {
 
             <p className="mt-1 text-sm text-muted-foreground">
               {jobTitle || "Target Role"}
-
-              {company
-                ? ` • ${company}`
-                : ""}
+              {company ? ` • ${company}` : ""}
             </p>
           </div>
 
           <button
             type="button"
-            onClick={regenerate}
+            onClick={() => void regenerate()}
             disabled={analyzing}
             className="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -346,8 +403,6 @@ function SkillGapPage() {
 
         {/* KPI Cards */}
         <div className="grid gap-4 md:grid-cols-3">
-
-          {/* Career Readiness */}
           <Panel>
             <div className="flex items-center justify-between">
               <div>
@@ -370,7 +425,6 @@ function SkillGapPage() {
             </div>
           </Panel>
 
-          {/* Skill Gaps */}
           <Panel>
             <div className="flex items-center justify-between">
               <div>
@@ -393,7 +447,6 @@ function SkillGapPage() {
             </div>
           </Panel>
 
-          {/* Top Priorities */}
           <Panel>
             <div className="flex items-center justify-between">
               <div>
@@ -415,7 +468,6 @@ function SkillGapPage() {
               </div>
             </div>
           </Panel>
-
         </div>
 
         {/* Skill Comparison Chart */}
@@ -453,19 +505,13 @@ function SkillGapPage() {
                     textAnchor="end"
                     interval={0}
                     height={90}
-                    tick={{
-                      fontSize: 12,
-                    }}
+                    tick={{ fontSize: 12 }}
                   />
 
                   <YAxis
                     domain={[0, 100]}
-                    tickFormatter={(value) =>
-                      `${value}%`
-                    }
-                    tick={{
-                      fontSize: 12,
-                    }}
+                    tickFormatter={(value) => `${value}%`}
+                    tick={{ fontSize: 12 }}
                   />
 
                   <Tooltip
@@ -475,9 +521,7 @@ function SkillGapPage() {
                         ? "Your Current Level"
                         : "Required Level",
                     ]}
-                    labelFormatter={(label) =>
-                      `Skill: ${label}`
-                    }
+                    labelFormatter={(label) => `Skill: ${label}`}
                     contentStyle={{
                       borderRadius: "10px",
                       border: "1px solid hsl(var(--border))",
@@ -497,7 +541,6 @@ function SkillGapPage() {
                     }
                   />
 
-                  {/* Current Skill Level */}
                   <Bar
                     dataKey="Current"
                     name="Current"
@@ -508,15 +551,12 @@ function SkillGapPage() {
                     <LabelList
                       dataKey="Current"
                       position="top"
-                      formatter={(value) =>
-                        `${value}%`
-                      }
+                      formatter={(value) => `${value}%`}
                       fontSize={11}
                       fontWeight={600}
                     />
                   </Bar>
 
-                  {/* Required Skill Level */}
                   <Bar
                     dataKey="Required"
                     name="Required"
@@ -527,9 +567,7 @@ function SkillGapPage() {
                     <LabelList
                       dataKey="Required"
                       position="top"
-                      formatter={(value) =>
-                        `${value}%`
-                      }
+                      formatter={(value) => `${value}%`}
                       fontSize={11}
                       fontWeight={600}
                     />
@@ -537,15 +575,13 @@ function SkillGapPage() {
                 </BarChart>
               </ResponsiveContainer>
             ) : (
-              <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                No skill gap data available.
+              <div className="flex h-full items-center justify-center px-4 text-center text-sm text-muted-foreground">
+                No skill-gap data was returned by the AI. Try regenerating the analysis. If this persists, check the backend logs and AI provider configuration.
               </div>
             )}
           </div>
 
-          {/* Chart Explanation */}
           <div className="mt-4 grid gap-3 border-t pt-4 sm:grid-cols-2">
-
             <div className="flex items-center gap-3 rounded-lg border p-3">
               <div className="h-3 w-3 shrink-0 rounded-full bg-blue-600" />
 
@@ -573,7 +609,6 @@ function SkillGapPage() {
                 </p>
               </div>
             </div>
-
           </div>
         </Panel>
 
@@ -585,23 +620,19 @@ function SkillGapPage() {
           />
 
           <div className="space-y-4">
-            {analysis.skill_gaps.map((item) => (
+            {analysis.skill_gaps.map((item, index) => (
               <div
-                key={item.skill}
+                key={`${item.skill}-${index}`}
                 className="rounded-xl border p-5"
               >
                 <div className="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
-
-                  {/* Skill information */}
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-2">
                       <h3 className="font-semibold">
                         {item.skill}
                       </h3>
 
-                      <PriorityTag
-                        priority={item.priority}
-                      />
+                      <PriorityTag priority={item.priority} />
                     </div>
 
                     <p className="mt-2 text-sm text-muted-foreground">
@@ -609,35 +640,24 @@ function SkillGapPage() {
                     </p>
                   </div>
 
-                  {/* Learning time */}
                   <div className="flex shrink-0 items-center gap-2 text-sm text-muted-foreground">
                     <Clock className="h-4 w-4" />
-
                     {item.learning_days} days
                   </div>
                 </div>
 
-                {/* Current vs Required */}
                 <div className="mt-5">
                   <div className="mb-2 flex justify-between text-xs">
-                    <span>
-                      Current: {item.current}%
-                    </span>
-
-                    <span>
-                      Required: {item.required}%
-                    </span>
+                    <span>Current: {item.current}%</span>
+                    <span>Required: {item.required}%</span>
                   </div>
 
                   <div className="h-2 overflow-hidden rounded-full bg-muted">
                     <div
-                      className="h-full rounded-full transition-all"
+                      className="h-full rounded-full bg-primary transition-all"
                       style={{
                         width: `${Math.min(
-                          Math.max(
-                            item.current,
-                            0,
-                          ),
+                          Math.max(Number(item.current) || 0, 0),
                           100,
                         )}%`,
                       }}
@@ -645,7 +665,6 @@ function SkillGapPage() {
                   </div>
                 </div>
 
-                {/* Learning Plan */}
                 {item.learning_plan?.length > 0 && (
                   <div className="mt-5">
                     <p className="mb-2 text-sm font-medium">
@@ -663,9 +682,7 @@ function SkillGapPage() {
                               {index + 1}.
                             </span>
 
-                            <span>
-                              {step}
-                            </span>
+                            <span>{step}</span>
                           </li>
                         ),
                       )}
@@ -675,19 +692,17 @@ function SkillGapPage() {
               </div>
             ))}
 
-            {/* No gaps */}
             {analysis.skill_gaps.length === 0 && (
               <div className="flex items-center gap-3 rounded-xl border p-5">
                 <CheckCircle2 className="h-5 w-5" />
 
                 <div>
                   <p className="font-medium">
-                    Excellent skill alignment
+                    No skill gaps returned
                   </p>
 
                   <p className="text-sm text-muted-foreground">
-                    No major skill gaps were identified
-                    for this role.
+                    The AI did not identify any skill gaps for this role. Review the other analysis details to confirm the result is meaningful.
                   </p>
                 </div>
               </div>
@@ -697,8 +712,6 @@ function SkillGapPage() {
 
         {/* Strengths + Priorities */}
         <div className="grid gap-6 lg:grid-cols-2">
-
-          {/* Strengths */}
           <Panel>
             <PanelHeader
               title="Your Strengths"
@@ -714,9 +727,7 @@ function SkillGapPage() {
                   >
                     <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
 
-                    <span className="text-sm">
-                      {strength}
-                    </span>
+                    <span className="text-sm">{strength}</span>
                   </div>
                 ),
               )}
@@ -729,7 +740,6 @@ function SkillGapPage() {
             </div>
           </Panel>
 
-          {/* Top Priorities */}
           <Panel>
             <PanelHeader
               title="Top Priorities"
@@ -747,28 +757,22 @@ function SkillGapPage() {
                       {index + 1}
                     </span>
 
-                    <span className="text-sm">
-                      {priority}
-                    </span>
+                    <span className="text-sm">{priority}</span>
                   </div>
                 ),
               )}
 
               {analysis.top_priorities.length === 0 && (
                 <p className="text-sm text-muted-foreground">
-                  No priority recommendations were
-                  returned.
+                  No priority recommendations were returned.
                 </p>
               )}
             </div>
           </Panel>
-
         </div>
 
         {/* AI Insights + Quick Wins */}
         <div className="grid gap-6 lg:grid-cols-2">
-
-          {/* Career Insights */}
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">
               AI Career Insights
@@ -787,28 +791,24 @@ function SkillGapPage() {
 
             {analysis.career_insights.length === 0 && (
               <div className="rounded-xl border p-5 text-sm text-muted-foreground">
-                No additional career insights were
-                generated.
+                No additional career insights were generated.
               </div>
             )}
           </div>
 
-          {/* Quick Wins */}
           <div className="space-y-4">
             <h2 className="text-lg font-semibold">
               Quick Wins
             </h2>
 
-            {analysis.quick_wins.map(
-              (win, index) => (
-                <AiInsight
-                  key={`quick-win-${index}`}
-                  label={`Quick Win ${index + 1}`}
-                >
-                  {win}
-                </AiInsight>
-              ),
-            )}
+            {analysis.quick_wins.map((win, index) => (
+              <AiInsight
+                key={`quick-win-${index}`}
+                label={`Quick Win ${index + 1}`}
+              >
+                {win}
+              </AiInsight>
+            ))}
 
             {analysis.quick_wins.length === 0 && (
               <div className="rounded-xl border p-5 text-sm text-muted-foreground">
@@ -816,9 +816,7 @@ function SkillGapPage() {
               </div>
             )}
           </div>
-
         </div>
-
       </div>
     </AppShell>
   );
