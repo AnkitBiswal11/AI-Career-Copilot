@@ -240,24 +240,21 @@ function JobMatchPage() {
       const currentJobId = savedJob.job_id;
 
       setJobId(currentJobId);
+      setSavingJob(false);
       
-      // Save the latest analyzed job ID for Skill Gap Analysis.
+      // Run the actual AI match.
+      const matchResult = await api.matchJob(
+        currentJobId,
+        Number(resumeId),
+      );
+      
+      setResult(matchResult);
+      
+      // Save the job ID after matching succeeds.
       window.localStorage.setItem(
         "cc_job_id",
         String(currentJobId),
       );
-      
-      setSavingJob(false);
-
-      /*
-       * Run the actual AI match.
-       */
-      const matchResult = await api.matchJob(
-        currentJobId,
-        resumeId,
-      );
-
-      setResult(matchResult);
     } catch (err) {
       console.error(
         "Job match failed:",
