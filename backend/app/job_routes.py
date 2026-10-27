@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 from .database import SessionLocal
 from .dependencies import get_current_user
 from .models import JobDescription, Resume, User
-from .schemas import JobCreate
+from .schemas import JobCreate, JobUpdate
 from .match_service import analyze_job_match
 
 
@@ -46,6 +46,45 @@ def create_job_description(
         "title": job.title,
         "company": job.company,
     }
+
+
+
+@router.put("/{job_id}")
+def update_job_description(
+    job_id: int,
+    job_data: JobUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    job = (
+        db.query(JobDescription)
+        .filter(
+            JobDescription.id == job_id,
+            JobDescription.user_id == current_user.id,
+        )
+        .first()
+    )
+
+    if not job:
+        raise HTTPException(
+            status_code=404,
+            detail="Job description not found",
+        )
+
+    job.title = job_data.title
+    job.company = job_data.company
+    job.description = job_data.description
+
+    db.commit()
+    db.refresh(job)
+
+    return {
+        "message": "Job description updated",
+        "job_id": job.id,
+        "title": job.title,
+        "company": job.company,
+    }
+
 
 
 @router.post("/{job_id}/match/{resume_id}")
